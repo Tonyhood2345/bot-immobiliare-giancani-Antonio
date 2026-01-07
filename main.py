@@ -16,7 +16,7 @@ TELEGRAM_TOKEN = os.environ.get("AGENCY_TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
 
 # ID della Pagina (Lo usiamo per trovarla nella lista)
-TARGET_PAGE_ID = "100068711829323"
+TARGET_PAGE_ID = "108297671444008"
 
 CSV_FILE = "Mindset.csv"
 LOGO_PATH = "faccia.png"
