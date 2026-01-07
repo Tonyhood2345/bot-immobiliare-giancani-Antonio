@@ -2,10 +2,9 @@ name: Bot Mindset Automatico
 
 on:
   schedule:
-    # Orario UTC: 10:30 corrisponde alle 11:30 Italiane (in inverno)
-    # GitHub usa l'orario universale, quindi dobbiamo togliere 1 ora.
+    # Ore 10:30 UTC = 11:30 Italia
     - cron: '30 10 * * *'
-  workflow_dispatch: # Questo ti permette di lanciarlo a mano se serve
+  workflow_dispatch:
 
 jobs:
   build:
@@ -20,13 +19,12 @@ jobs:
         with:
           python-version: '3.9'
 
-      - name: Installa le librerie necessarie
-        run: |
-          pip install pandas matplotlib requests pillow
+      - name: Installa le librerie
+        run: pip install pandas matplotlib requests pillow
 
       - name: Esegui il Bot Mindset
         env:
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          AGENCY_TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}
+          MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
         run: python main.py
