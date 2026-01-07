@@ -10,21 +10,21 @@ from io import BytesIO
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ANTONIO MINDSET ---
-# 1. Token Facebook (della tua pagina Mindset)
+# 1. Token Facebook (Pagina Antonio Giancani)
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 
-# 2. Token Telegram (del nuovo bot Giancani Agency)
+# 2. Token Telegram (Bot Agency)
 TELEGRAM_TOKEN = os.environ.get("AGENCY_TELEGRAM_TOKEN")
 
-# 3. ID Gruppo Telegram (quello che abbiamo appena trovato)
+# 3. ID Gruppo Telegram (Mindset)
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
 
-# ID Pagina Facebook
+# ID Pagina Facebook (La tua)
 PAGE_ID = "100068711829323"
 
-# File necessari (Assicurati che esistano su GitHub!)
+# File
 CSV_FILE = "Mindset.csv"
-LOGO_PATH = "faccia.png"   # La tua foto
+LOGO_PATH = "faccia.png"
 FONT_NAME = "arial.ttf" 
 
 # --- 1. GESTIONE DATI ---
@@ -145,7 +145,7 @@ def add_face_logo(img):
     if os.path.exists(LOGO_PATH):
         try:
             face = Image.open(LOGO_PATH).convert("RGBA")
-            w = int(img.width * 0.25) # Grandezza faccia (25%)
+            w = int(img.width * 0.25)
             h = int(w * (face.height / face.width))
             face = face.resize((w, h))
             img.paste(face, ((img.width - w)//2, img.height - h - 40), face)
@@ -172,7 +172,7 @@ def genera_coaching(row):
 
     return f"{intro}\n{msg}"
 
-# --- 8. INVIO SOCIAL ---
+# --- 8. INVIO SOCIAL (VERSIONE DEBUG FACEBOOK) ---
 def send_telegram(img_bytes, caption):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: 
         print("❌ Dati Telegram mancanti")
@@ -189,13 +189,27 @@ def post_facebook(img_bytes, message):
     if not FACEBOOK_TOKEN: 
         print("❌ Token Facebook mancante")
         return
+    
+    # URL API Facebook
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('img.png', img_bytes, 'image/png')}
     data = {'message': message, 'published': 'true'}
+    
     try:
-        requests.post(url, files=files, data=data)
-        print("✅ Facebook OK")
-    except Exception as e: print(f"❌ Facebook Error: {e}")
+        # Invio richiesta
+        response = requests.post(url, files=files, data=data)
+        
+        # CONTROLLO RISPOSTA (Debug)
+        if response.status_code == 200:
+            print(f"✅ Facebook OK! Post ID: {response.json().get('id')}")
+            print("⚠️ NOTE: Se non lo vedi, controlla che l'App FB sia in modalità 'LIVE' su Developers.")
+        else:
+            print(f"❌ Facebook ERRORE: {response.status_code}")
+            # Questo stamperà il motivo esatto dell'errore (es. Permissions, Token scaduto, ecc.)
+            print(f"DETTAGLI: {response.text}")
+            
+    except Exception as e: 
+        print(f"❌ Errore connessione Facebook: {e}")
 
 # --- MAIN ---
 if __name__ == "__main__":
