@@ -100,7 +100,7 @@ def create_quote_image(row):
     author_height = 80
     total_content_height = text_block_height + author_height
     
-    start_y = ((H - total_content_height) / 2) - 100 # Spostato un po' meno in alto per bilanciare
+    start_y = ((H - total_content_height) / 2) - 100 # Spostato un po' meno in alto
     
     padding = 50
     box_left = 40
@@ -127,14 +127,15 @@ def create_quote_image(row):
 
     return final_img
 
-# --- 6. AGGIUNTA BRANDING (FACCIA + NOME A DESTRA) ---
+# --- 6. AGGIUNTA BRANDING (FACCIA + NOME A SINISTRA) ---
 def add_branding(img):
     # 1. Preparazione variabili per il logo
     logo_w = 0
     logo_h = 0
     logo_x = 0
     logo_y = 0
-    margin_right = 40
+    # USIAMO IL MARGINE SINISTRO ORA
+    margin_left = 40
     margin_bottom = 40
 
     # 2. Caricamento e posizionamento della Faccia (Logo)
@@ -146,8 +147,8 @@ def add_branding(img):
             logo_h = int(logo_w * (face.height / face.width))
             face = face.resize((logo_w, logo_h))
             
-            # Posizione: Angolo in basso a destra
-            logo_x = img.width - logo_w - margin_right
+            # POSIZIONE: Angolo in basso a SINISTRA
+            logo_x = margin_left
             logo_y = img.height - logo_h - margin_bottom
             
             img.paste(face, (logo_x, logo_y), face)
@@ -161,17 +162,16 @@ def add_branding(img):
     
     # Calcola dimensione del testo
     bbox = draw.textbbox((0, 0), text, font=font_name)
-    text_w = bbox[2] - bbox[0]
     text_h = bbox[3] - bbox[1]
     
     # Posizione del testo
     if logo_w > 0:
-        # Se c'è il logo, testo a sinistra del logo, centrato verticalmente
-        text_x = logo_x - text_w - 25 # 25px di spazio tra testo e logo
+        # Se c'è il logo, testo a DESTRA del logo, centrato verticalmente
+        text_x = logo_x + logo_w + 25 # 25px di spazio tra logo e testo
         text_y = logo_y + (logo_h - text_h) / 2
     else:
-        # Se non c'è il logo, solo testo in basso a destra
-        text_x = img.width - text_w - margin_right
+        # Se non c'è il logo, solo testo in basso a sinistra
+        text_x = margin_left
         text_y = img.height - text_h - margin_bottom
 
     # Scritta in color Oro
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     row = get_random_quote()
     if row is not None:
         print(f"💼 Mindset: {row['Categoria']}")
-        # Crea immagine base + Aggiungi Branding (Faccia e Nome a destra)
+        # Crea immagine base + Aggiungi Branding (Faccia e Nome a SINISTRA)
         img = add_branding(create_quote_image(row))
         
         buf = BytesIO()
