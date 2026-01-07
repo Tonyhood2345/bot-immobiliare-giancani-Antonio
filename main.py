@@ -10,12 +10,12 @@ from io import BytesIO
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
-# Ora qui ci aspettiamo il TOKEN PAGINA diretto (non quello utente)
+# Token Pagina diretto
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 TELEGRAM_TOKEN = os.environ.get("AGENCY_TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
 
-# ID DELLA TUA PAGINA AZIENDALE (Antonio Giancani)
+# ID PAGINA AZIENDALE
 PAGE_ID = "108297671444008"
 
 CSV_FILE = "Mindset.csv"
@@ -80,7 +80,7 @@ def load_font(size):
         except: continue
     return ImageFont.load_default()
 
-# --- 5. CREAZIONE GRAFICA ---
+# --- 5. CREAZIONE GRAFICA PRINCIPALE ---
 def create_quote_image(row):
     prompt = get_image_prompt(row['Categoria'])
     base_img = get_ai_image(prompt).resize((1080, 1080))
@@ -100,7 +100,7 @@ def create_quote_image(row):
     author_height = 80
     total_content_height = text_block_height + author_height
     
-    start_y = ((H - total_content_height) / 2) - 150
+    start_y = ((H - total_content_height) / 2) - 100 # Spostato un po' meno in alto per bilanciare
     
     padding = 50
     box_left = 40
@@ -127,16 +127,56 @@ def create_quote_image(row):
 
     return final_img
 
-# --- 6. AGGIUNTA FACCIA ---
-def add_face_logo(img):
+# --- 6. AGGIUNTA BRANDING (FACCIA + NOME A DESTRA) ---
+def add_branding(img):
+    # 1. Preparazione variabili per il logo
+    logo_w = 0
+    logo_h = 0
+    logo_x = 0
+    logo_y = 0
+    margin_right = 40
+    margin_bottom = 40
+
+    # 2. Caricamento e posizionamento della Faccia (Logo)
     if os.path.exists(LOGO_PATH):
         try:
             face = Image.open(LOGO_PATH).convert("RGBA")
-            w = int(img.width * 0.25)
-            h = int(w * (face.height / face.width))
-            face = face.resize((w, h))
-            img.paste(face, ((img.width - w)//2, img.height - h - 40), face)
-        except: pass
+            # Dimensione: 20% della larghezza dell'immagine
+            logo_w = int(img.width * 0.20)
+            logo_h = int(logo_w * (face.height / face.width))
+            face = face.resize((logo_w, logo_h))
+            
+            # Posizione: Angolo in basso a destra
+            logo_x = img.width - logo_w - margin_right
+            logo_y = img.height - logo_h - margin_bottom
+            
+            img.paste(face, (logo_x, logo_y), face)
+        except Exception as e:
+            print(f"⚠️ Errore caricamento logo: {e}")
+
+    # 3. Aggiunta del Nome "Antonio Giancani"
+    draw = ImageDraw.Draw(img)
+    font_name = load_font(55) # Font per la firma
+    text = "Antonio Giancani"
+    
+    # Calcola dimensione del testo
+    bbox = draw.textbbox((0, 0), text, font=font_name)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    
+    # Posizione del testo
+    if logo_w > 0:
+        # Se c'è il logo, testo a sinistra del logo, centrato verticalmente
+        text_x = logo_x - text_w - 25 # 25px di spazio tra testo e logo
+        text_y = logo_y + (logo_h - text_h) / 2
+    else:
+        # Se non c'è il logo, solo testo in basso a destra
+        text_x = img.width - text_w - margin_right
+        text_y = img.height - text_h - margin_bottom
+
+    # Scritta in color Oro
+    draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
+    
     return img
 
 # --- 7. TESTO POST ---
@@ -149,7 +189,7 @@ def genera_coaching(row):
     elif "disciplina" in cat: msg = "La costanza batte l'intensità."
     return f"{intro}\n{msg}"
 
-# --- 8. SOCIAL (SEMPLIFICATO) ---
+# --- 8. SOCIAL ---
 def send_telegram(img_bytes, caption):
     if not TELEGRAM_TOKEN: return
     try:
@@ -186,7 +226,9 @@ if __name__ == "__main__":
     row = get_random_quote()
     if row is not None:
         print(f"💼 Mindset: {row['Categoria']}")
-        img = add_face_logo(create_quote_image(row))
+        # Crea immagine base + Aggiungi Branding (Faccia e Nome a destra)
+        img = add_branding(create_quote_image(row))
+        
         buf = BytesIO()
         img.save(buf, format='PNG')
         buf.seek(0)
@@ -196,9 +238,11 @@ if __name__ == "__main__":
             f"💎 {str(row['Categoria']).upper()} 💎\n\n"
             f"“{row['Frase']}”\n\n"
             f"────────────────\n{coaching_text}\n────────────────\n\n"
-            f"👤 Antonio Giancani\n🏠 Mindset Immobiliare\n\n#immobiliare #mindset #successo"
+            f"👤 Antonio Giancani\n🏠 Agente Immobiliare\n\n#immobiliare #mindset #successo"
         )
         
         send_telegram(buf, caption)
         buf.seek(0)
         post_facebook(buf, caption)
+    else:
+        print("⚠️ Nessuna frase trovata nel CSV")
