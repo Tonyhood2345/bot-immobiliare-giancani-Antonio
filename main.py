@@ -246,7 +246,6 @@ def post_facebook_story(img_bytes):
     # Usa il metodo semplice (token nell'URL)
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('story.png', img_bytes, 'image/png')}
-    # Le storie non hanno bisogno del parametro 'published: true' esplicito qui, ma non fa male
     
     try:
         requests.post(url, files=files)
