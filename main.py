@@ -11,13 +11,9 @@ from io import BytesIO
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
-# !!! IMPORTANTE: Se usi GitHub Secrets, questo verrà sovrascritto dalla variabile d'ambiente.
-# Versione corretta per GitHub:
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
-
-
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
+TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
 
 # ID PAGINA AZIENDALE (Antonio Giancani)
 PAGE_ID = "108297671444008"
@@ -222,66 +218,45 @@ def send_telegram(img_bytes, caption):
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
 # ==============================================================================
-# 🔥 NUOVA FUNZIONE DI POST FACEBOOK CON DIAGNOSTICA DETTAGLIATA 🔥
+# 🔥 FUNZIONI FACEBOOK (SEMPLIFICATE COME NEL BOT CHIESA) 🔥
 # ==============================================================================
 def post_facebook_feed(img_bytes, message):
-    if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
-        print("❌ ERRORE: Manca il Token Facebook o è quello di default!")
+    if not FACEBOOK_TOKEN: 
+        print("❌ Token Facebook mancante")
         return
-    
-    # DIAGNOSTICA: Stampiamo i dati per capire cosa non va
-    print(f"\n🕵️ DIAGNOSTICA FACEBOOK:")
-    print(f"🔑 Token in uso (primi 10 caratteri): {FACEBOOK_TOKEN[:10]}...")
-    print(f"🎯 ID Pagina su cui pubblico: {PAGE_ID}")
-    
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos"
-    
-    # Prepariamo i dati
-    files = {'file': ('img.png', img_bytes, 'image/png')}
-    data = {
-        'message': message, 
-        'access_token': FACEBOOK_TOKEN, 
-        'published': 'true'
-    }
-
-    try:
-        print("🚀 Invio richiesta FEED a Facebook...")
-        response = requests.post(url, files=files, data=data, timeout=30)
         
-        # RISPOSTA DI FACEBOOK
-        if response.status_code == 200:
-            print(f"✅ FACEBOOK FEED OK! ID Post: {response.json().get('id')}")
-        else:
-            print(f"\n❌ ERRORE FACEBOOK (Codice {response.status_code})")
-            print("⚠️ ECCO COSA DICE FACEBOOK (Copia questo errore):")
-            print("--------------------------------------------------")
-            print(response.text)
-            print("--------------------------------------------------\n")
-            
-    except Exception as e:
-        print(f"❌ Errore critico connessione FB: {e}")
+    print("🚀 Invio Feed Facebook...")
+    # Usa il metodo semplice (token nell'URL) come nel bot Chiesa
+    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
+    files = {'file': ('img.png', img_bytes, 'image/png')}
+    data = {'message': message, 'published': 'true'}
+    
+    try:
+        requests.post(url, files=files, data=data)
+        print("✅ Facebook Feed OK")
+    except Exception as e: 
+        print(f"❌ Facebook Feed Error: {e}")
 
 def post_facebook_story(img_bytes):
-    if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
-        print("❌ Token non valido per Storia")
+    if not FACEBOOK_TOKEN: 
+        print("❌ Token Facebook mancante")
         return
         
     print("🚀 Invio Storia Facebook...")
+    # Usa il metodo semplice (token nell'URL)
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('story.png', img_bytes, 'image/png')}
+    # Le storie non hanno bisogno del parametro 'published: true' esplicito qui, ma non fa male
     
     try:
-        r = requests.post(url, files=files, timeout=30)
-        if r.status_code == 200:
-            print("✅ Storia Facebook Pubblicata!")
-        else:
-            print(f"❌ Errore Storia: {r.status_code}")
-            print(f"Dettagli: {r.text}")
-    except Exception as e: print(f"❌ Errore connessione Storia: {e}")
+        requests.post(url, files=files)
+        print("✅ Facebook Storia OK")
+    except Exception as e: 
+        print(f"❌ Facebook Storia Error: {e}")
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("🚀 Avvio Bot Mindset...")
+    print("🚀 Avvio Bot Mindset (Versione Semplificata)...")
     row = get_random_quote()
     if row is not None:
         print(f"💼 Mindset: {row['Categoria']}")
@@ -313,7 +288,6 @@ if __name__ == "__main__":
         send_telegram(buf_feed, caption)
         
         buf_feed.seek(0)
-        # Qui chiamiamo la nuova funzione con la diagnostica
         post_facebook_feed(buf_feed, caption)
         
         buf_story.seek(0)
