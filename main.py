@@ -6,12 +6,14 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import textwrap
 import random
+import time  # <--- AGGIUNTO PER IL RETRY
 from io import BytesIO
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
-# Token Pagina diretto
-FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
+# !!! IMPORTANTE: Incolla il tuo token lungo qui sotto tra le virgolette !!!
+FACEBOOK_TOKEN = "INSERISCI_QUI_IL_TUO_TOKEN_LUNGO" 
+
 TELEGRAM_TOKEN = os.environ.get("AGENCY_TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
 
@@ -58,17 +60,31 @@ def get_image_prompt(categoria):
     elif "disciplina" in cat or "focus" in cat: return random.choice(prompts_focus)
     else: return random.choice(prompts_business)
 
-# --- 3. AI & IMMAGINI ---
+# --- 3. AI & IMMAGINI (VERSIONE CORRETTA CON RETRY) ---
 def get_ai_image(prompt_text):
     print(f"🎨 Generazione immagine: {prompt_text}")
+    clean_prompt = prompt_text.replace(" ", "%20")
+    url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true"
+    
+    # TENTATIVO 1
     try:
-        clean_prompt = prompt_text.replace(" ", "%20")
-        url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true"
         response = requests.get(url, timeout=20)
         if response.status_code == 200:
             return Image.open(BytesIO(response.content)).convert("RGBA")
+    except:
+        print("⚠️ Primo tentativo AI fallito. Riprovo tra 2 secondi...")
+        time.sleep(2)
+    
+    # TENTATIVO 2 (BACKUP)
+    try:
+        response = requests.get(url, timeout=20)
+        if response.status_code == 200:
+            print("✅ Immagine recuperata al secondo tentativo.")
+            return Image.open(BytesIO(response.content)).convert("RGBA")
     except Exception as e:
-        print(f"⚠️ Errore AI: {e}")
+        print(f"❌ Errore AI definitivo: {e}")
+
+    # Se fallisce tutto, immagine nera di emergenza
     return Image.new('RGBA', (1080, 1080), (20, 20, 20))
 
 # --- 4. FUNZIONE FONT ---
@@ -164,7 +180,7 @@ def add_branding(img):
     draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
     return img
 
-# --- 7. NOVITÀ: CREAZIONE FORMATO STORIA (VERTICALE CON BANDE) ---
+# --- 7. CREAZIONE FORMATO STORIA (VERTICALE CON BANDE) ---
 def create_story_image(square_img):
     print("📱 Creazione formato Storia...")
     # Dimensioni Storia Facebook (1080x1920)
@@ -213,31 +229,38 @@ def send_telegram(img_bytes, caption):
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
 def post_facebook_feed(img_bytes, message):
-    if not FACEBOOK_TOKEN: return
+    if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
+        print("❌ Token non valido per Feed")
+        return
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('img.png', img_bytes, 'image/png')}
     data = {'message': message, 'published': 'true'}
     try:
-        r = requests.post(url, files=files, data=data)
+        r = requests.post(url, files=files, data=data, timeout=30)
         if r.status_code == 200: print(f"✅ Facebook Feed OK!")
         else: print(f"❌ FB Feed Error: {r.text}")
     except Exception as e: print(f"❌ FB Conn Error: {e}")
 
-# --- NUOVA FUNZIONE PER INVIARE LA STORIA ---
+# --- NUOVA FUNZIONE PER INVIARE LA STORIA (CORRETTA) ---
 def post_facebook_story(img_bytes):
-    if not FACEBOOK_TOKEN: return
+    if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
+        print("❌ Token non valido per Storia")
+        return
     print("🚀 Invio Storia Facebook...")
     
     # Endpoint specifico per le storie
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
-    files = {'photo': ('story.png', img_bytes, 'image/png')}
+    
+    # *** CORREZIONE QUI: USA 'file' INVECE DI 'photo' ***
+    files = {'file': ('story.png', img_bytes, 'image/png')}
     
     try:
-        r = requests.post(url, files=files)
+        r = requests.post(url, files=files, timeout=30)
         if r.status_code == 200:
             print("✅ Storia Facebook Pubblicata!")
         else:
-            print(f"❌ Errore Storia: {r.text}")
+            print(f"❌ Errore Storia: {r.status_code}")
+            print(f"Dettagli: {r.text}")
     except Exception as e: print(f"❌ Errore connessione Storia: {e}")
 
 # --- MAIN ---
@@ -279,6 +302,8 @@ if __name__ == "__main__":
         buf_feed.seek(0)
         post_facebook_feed(buf_feed, caption)
         
+        # Invia la Storia Corretta
+        buf_story.seek(0)
         post_facebook_story(buf_story)
         
     else:
