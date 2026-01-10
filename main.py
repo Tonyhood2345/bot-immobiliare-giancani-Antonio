@@ -100,7 +100,7 @@ def create_quote_image(row):
     author_height = 80
     total_content_height = text_block_height + author_height
     
-    start_y = ((H - total_content_height) / 2) - 100 # Spostato un po' meno in alto
+    start_y = ((H - total_content_height) / 2) - 100 
     
     padding = 50
     box_left = 40
@@ -127,27 +127,19 @@ def create_quote_image(row):
 
     return final_img
 
-# --- 6. AGGIUNTA BRANDING (FACCIA + NOME A SINISTRA) ---
+# --- 6. AGGIUNTA BRANDING ---
 def add_branding(img):
-    # 1. Preparazione variabili per il logo
-    logo_w = 0
-    logo_h = 0
-    logo_x = 0
-    logo_y = 0
-    # USIAMO IL MARGINE SINISTRO ORA
+    logo_w, logo_h, logo_x, logo_y = 0, 0, 0, 0
     margin_left = 40
     margin_bottom = 40
 
-    # 2. Caricamento e posizionamento della Faccia (Logo)
     if os.path.exists(LOGO_PATH):
         try:
             face = Image.open(LOGO_PATH).convert("RGBA")
-            # Dimensione: 20% della larghezza dell'immagine
             logo_w = int(img.width * 0.20)
             logo_h = int(logo_w * (face.height / face.width))
             face = face.resize((logo_w, logo_h))
             
-            # POSIZIONE: Angolo in basso a SINISTRA
             logo_x = margin_left
             logo_y = img.height - logo_h - margin_bottom
             
@@ -155,31 +147,51 @@ def add_branding(img):
         except Exception as e:
             print(f"⚠️ Errore caricamento logo: {e}")
 
-    # 3. Aggiunta del Nome "Antonio Giancani"
     draw = ImageDraw.Draw(img)
-    font_name = load_font(55) # Font per la firma
+    font_name = load_font(55)
     text = "Antonio Giancani"
     
-    # Calcola dimensione del testo
     bbox = draw.textbbox((0, 0), text, font=font_name)
     text_h = bbox[3] - bbox[1]
     
-    # Posizione del testo
     if logo_w > 0:
-        # Se c'è il logo, testo a DESTRA del logo, centrato verticalmente
-        text_x = logo_x + logo_w + 25 # 25px di spazio tra logo e testo
+        text_x = logo_x + logo_w + 25
         text_y = logo_y + (logo_h - text_h) / 2
     else:
-        # Se non c'è il logo, solo testo in basso a sinistra
         text_x = margin_left
         text_y = img.height - text_h - margin_bottom
 
-    # Scritta in color Oro
     draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
-    
     return img
 
-# --- 7. TESTO POST ---
+# --- 7. NOVITÀ: CREAZIONE FORMATO STORIA (VERTICALE CON BANDE) ---
+def create_story_image(square_img):
+    print("📱 Creazione formato Storia...")
+    # Dimensioni Storia Facebook (1080x1920)
+    story_w, story_h = 1080, 1920
+    
+    # Sfondo Scuro (Bande Nere/Grigio Scuro)
+    bg_color = (15, 15, 15)
+    story_img = Image.new('RGBA', (story_w, story_h), bg_color)
+    
+    # Calcolo posizione centrale per l'immagine quadrata
+    y_pos = (story_h - square_img.height) // 2
+    story_img.paste(square_img, (0, y_pos))
+    
+    # Aggiungi scritta "NUOVO POST" in alto
+    draw = ImageDraw.Draw(story_img)
+    font_story = load_font(60)
+    text_top = "NUOVO POST ⤵"
+    
+    bbox = draw.textbbox((0, 0), text_top, font=font_story)
+    w_text = bbox[2] - bbox[0]
+    
+    # Posiziona il testo nella banda superiore
+    draw.text(((story_w - w_text)/2, y_pos - 150), text_top, font=font_story, fill="#FFD700")
+    
+    return story_img
+
+# --- 8. TESTO POST ---
 def genera_coaching(row):
     cat = str(row['Categoria']).lower()
     intro = random.choice(["🚀 𝗠𝗶𝗻𝗱𝘀𝗲𝘁 𝗜𝗺𝗺𝗼𝗯𝗶𝗹𝗶𝗮𝗿𝗲:", "💡 𝗖𝗼𝗻𝘀𝗶𝗴𝗹𝗶𝗼 𝗱𝗲𝗹 𝗴𝗶𝗼𝗿𝗻𝗼:", "🏠 𝗩𝗶𝘀𝗶𝗼𝗻𝗲 𝗲 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗼:"])
@@ -189,7 +201,7 @@ def genera_coaching(row):
     elif "disciplina" in cat: msg = "La costanza batte l'intensità."
     return f"{intro}\n{msg}"
 
-# --- 8. SOCIAL ---
+# --- 9. SOCIAL ---
 def send_telegram(img_bytes, caption):
     if not TELEGRAM_TOKEN: return
     try:
@@ -200,25 +212,33 @@ def send_telegram(img_bytes, caption):
         print("✅ Telegram OK")
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
-def post_facebook(img_bytes, message):
-    if not FACEBOOK_TOKEN: 
-        print("❌ Token Facebook mancante nei Secrets")
-        return
-    
-    # URL diretto per pubblicare sulla Pagina usando il Token Pagina
+def post_facebook_feed(img_bytes, message):
+    if not FACEBOOK_TOKEN: return
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('img.png', img_bytes, 'image/png')}
     data = {'message': message, 'published': 'true'}
+    try:
+        r = requests.post(url, files=files, data=data)
+        if r.status_code == 200: print(f"✅ Facebook Feed OK!")
+        else: print(f"❌ FB Feed Error: {r.text}")
+    except Exception as e: print(f"❌ FB Conn Error: {e}")
+
+# --- NUOVA FUNZIONE PER INVIARE LA STORIA ---
+def post_facebook_story(img_bytes):
+    if not FACEBOOK_TOKEN: return
+    print("🚀 Invio Storia Facebook...")
+    
+    # Endpoint specifico per le storie
+    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
+    files = {'photo': ('story.png', img_bytes, 'image/png')}
     
     try:
-        response = requests.post(url, files=files, data=data)
-        if response.status_code == 200:
-            print(f"✅ Facebook OK! Post ID: {response.json().get('id')}")
+        r = requests.post(url, files=files)
+        if r.status_code == 200:
+            print("✅ Storia Facebook Pubblicata!")
         else:
-            print(f"❌ Facebook ERRORE: {response.status_code}")
-            print(f"DETTAGLI: {response.text}")
-    except Exception as e: 
-        print(f"❌ Errore connessione Facebook: {e}")
+            print(f"❌ Errore Storia: {r.text}")
+    except Exception as e: print(f"❌ Errore connessione Storia: {e}")
 
 # --- MAIN ---
 if __name__ == "__main__":
@@ -226,13 +246,24 @@ if __name__ == "__main__":
     row = get_random_quote()
     if row is not None:
         print(f"💼 Mindset: {row['Categoria']}")
-        # Crea immagine base + Aggiungi Branding (Faccia e Nome a SINISTRA)
-        img = add_branding(create_quote_image(row))
         
-        buf = BytesIO()
-        img.save(buf, format='PNG')
-        buf.seek(0)
+        # 1. Crea immagine QUADRATA per il Feed
+        img_square = add_branding(create_quote_image(row))
         
+        # Salva in memoria per Feed
+        buf_feed = BytesIO()
+        img_square.save(buf_feed, format='PNG')
+        buf_feed.seek(0)
+        
+        # 2. Crea immagine VERTICALE per la Storia (con bande)
+        img_story = create_story_image(img_square)
+        
+        # Salva in memoria per Storia
+        buf_story = BytesIO()
+        img_story.save(buf_story, format='PNG')
+        buf_story.seek(0)
+        
+        # Testi
         coaching_text = genera_coaching(row)
         caption = (
             f"💎 {str(row['Categoria']).upper()} 💎\n\n"
@@ -241,8 +272,14 @@ if __name__ == "__main__":
             f"👤 Antonio Giancani\n🏠 Agente Immobiliare\n\n#immobiliare #mindset #successo"
         )
         
-        send_telegram(buf, caption)
-        buf.seek(0)
-        post_facebook(buf, caption)
+        # 3. INVIO
+        send_telegram(buf_feed, caption)
+        
+        # Reset del buffer feed per rileggerlo
+        buf_feed.seek(0)
+        post_facebook_feed(buf_feed, caption)
+        
+        post_facebook_story(buf_story)
+        
     else:
         print("⚠️ Nessuna frase trovata nel CSV")
