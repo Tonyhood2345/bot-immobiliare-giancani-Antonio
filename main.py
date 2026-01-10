@@ -6,18 +6,19 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import textwrap
 import random
-import time  # <--- AGGIUNTO PER IL RETRY
+import time 
 from io import BytesIO
 from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
-# !!! IMPORTANTE: Incolla il tuo token lungo qui sotto tra le virgolette !!!
-FACEBOOK_TOKEN = "INSERISCI_QUI_IL_TUO_TOKEN_LUNGO" 
+# !!! IMPORTANTE: Se usi GitHub Secrets, questo verrà sovrascritto dalla variabile d'ambiente.
+# Se lo lanci dal PC, incolla il token qui sotto.
+FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN", "INSERISCI_QUI_IL_TOKEN_SE_USI_PC") 
 
-TELEGRAM_TOKEN = os.environ.get("AGENCY_TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# ID PAGINA AZIENDALE
+# ID PAGINA AZIENDALE (Antonio Giancani)
 PAGE_ID = "108297671444008"
 
 CSV_FILE = "Mindset.csv"
@@ -60,13 +61,12 @@ def get_image_prompt(categoria):
     elif "disciplina" in cat or "focus" in cat: return random.choice(prompts_focus)
     else: return random.choice(prompts_business)
 
-# --- 3. AI & IMMAGINI (VERSIONE CORRETTA CON RETRY) ---
+# --- 3. AI & IMMAGINI ---
 def get_ai_image(prompt_text):
     print(f"🎨 Generazione immagine: {prompt_text}")
     clean_prompt = prompt_text.replace(" ", "%20")
     url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true"
     
-    # TENTATIVO 1
     try:
         response = requests.get(url, timeout=20)
         if response.status_code == 200:
@@ -75,7 +75,6 @@ def get_ai_image(prompt_text):
         print("⚠️ Primo tentativo AI fallito. Riprovo tra 2 secondi...")
         time.sleep(2)
     
-    # TENTATIVO 2 (BACKUP)
     try:
         response = requests.get(url, timeout=20)
         if response.status_code == 200:
@@ -84,7 +83,6 @@ def get_ai_image(prompt_text):
     except Exception as e:
         print(f"❌ Errore AI definitivo: {e}")
 
-    # Se fallisce tutto, immagine nera di emergenza
     return Image.new('RGBA', (1080, 1080), (20, 20, 20))
 
 # --- 4. FUNZIONE FONT ---
@@ -180,21 +178,16 @@ def add_branding(img):
     draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
     return img
 
-# --- 7. CREAZIONE FORMATO STORIA (VERTICALE CON BANDE) ---
+# --- 7. CREAZIONE FORMATO STORIA ---
 def create_story_image(square_img):
     print("📱 Creazione formato Storia...")
-    # Dimensioni Storia Facebook (1080x1920)
     story_w, story_h = 1080, 1920
-    
-    # Sfondo Scuro (Bande Nere/Grigio Scuro)
     bg_color = (15, 15, 15)
     story_img = Image.new('RGBA', (story_w, story_h), bg_color)
     
-    # Calcolo posizione centrale per l'immagine quadrata
     y_pos = (story_h - square_img.height) // 2
     story_img.paste(square_img, (0, y_pos))
     
-    # Aggiungi scritta "NUOVO POST" in alto
     draw = ImageDraw.Draw(story_img)
     font_story = load_font(60)
     text_top = "NUOVO POST ⤵"
@@ -202,7 +195,6 @@ def create_story_image(square_img):
     bbox = draw.textbbox((0, 0), text_top, font=font_story)
     w_text = bbox[2] - bbox[0]
     
-    # Posiziona il testo nella banda superiore
     draw.text(((story_w - w_text)/2, y_pos - 150), text_top, font=font_story, fill="#FFD700")
     
     return story_img
@@ -228,30 +220,53 @@ def send_telegram(img_bytes, caption):
         print("✅ Telegram OK")
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
+# ==============================================================================
+# 🔥 NUOVA FUNZIONE DI POST FACEBOOK CON DIAGNOSTICA DETTAGLIATA 🔥
+# ==============================================================================
 def post_facebook_feed(img_bytes, message):
     if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
-        print("❌ Token non valido per Feed")
+        print("❌ ERRORE: Manca il Token Facebook o è quello di default!")
         return
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
+    
+    # DIAGNOSTICA: Stampiamo i dati per capire cosa non va
+    print(f"\n🕵️ DIAGNOSTICA FACEBOOK:")
+    print(f"🔑 Token in uso (primi 10 caratteri): {FACEBOOK_TOKEN[:10]}...")
+    print(f"🎯 ID Pagina su cui pubblico: {PAGE_ID}")
+    
+    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos"
+    
+    # Prepariamo i dati
     files = {'file': ('img.png', img_bytes, 'image/png')}
-    data = {'message': message, 'published': 'true'}
-    try:
-        r = requests.post(url, files=files, data=data, timeout=30)
-        if r.status_code == 200: print(f"✅ Facebook Feed OK!")
-        else: print(f"❌ FB Feed Error: {r.text}")
-    except Exception as e: print(f"❌ FB Conn Error: {e}")
+    data = {
+        'message': message, 
+        'access_token': FACEBOOK_TOKEN, 
+        'published': 'true'
+    }
 
-# --- NUOVA FUNZIONE PER INVIARE LA STORIA (CORRETTA) ---
+    try:
+        print("🚀 Invio richiesta FEED a Facebook...")
+        response = requests.post(url, files=files, data=data, timeout=30)
+        
+        # RISPOSTA DI FACEBOOK
+        if response.status_code == 200:
+            print(f"✅ FACEBOOK FEED OK! ID Post: {response.json().get('id')}")
+        else:
+            print(f"\n❌ ERRORE FACEBOOK (Codice {response.status_code})")
+            print("⚠️ ECCO COSA DICE FACEBOOK (Copia questo errore):")
+            print("--------------------------------------------------")
+            print(response.text)
+            print("--------------------------------------------------\n")
+            
+    except Exception as e:
+        print(f"❌ Errore critico connessione FB: {e}")
+
 def post_facebook_story(img_bytes):
     if not FACEBOOK_TOKEN or "INSERISCI" in FACEBOOK_TOKEN: 
         print("❌ Token non valido per Storia")
         return
+        
     print("🚀 Invio Storia Facebook...")
-    
-    # Endpoint specifico per le storie
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
-    
-    # *** CORREZIONE QUI: USA 'file' INVECE DI 'photo' ***
     files = {'file': ('story.png', img_bytes, 'image/png')}
     
     try:
@@ -273,15 +288,13 @@ if __name__ == "__main__":
         # 1. Crea immagine QUADRATA per il Feed
         img_square = add_branding(create_quote_image(row))
         
-        # Salva in memoria per Feed
         buf_feed = BytesIO()
         img_square.save(buf_feed, format='PNG')
         buf_feed.seek(0)
         
-        # 2. Crea immagine VERTICALE per la Storia (con bande)
+        # 2. Crea immagine VERTICALE per la Storia
         img_story = create_story_image(img_square)
         
-        # Salva in memoria per Storia
         buf_story = BytesIO()
         img_story.save(buf_story, format='PNG')
         buf_story.seek(0)
@@ -298,11 +311,10 @@ if __name__ == "__main__":
         # 3. INVIO
         send_telegram(buf_feed, caption)
         
-        # Reset del buffer feed per rileggerlo
         buf_feed.seek(0)
+        # Qui chiamiamo la nuova funzione con la diagnostica
         post_facebook_feed(buf_feed, caption)
         
-        # Invia la Storia Corretta
         buf_story.seek(0)
         post_facebook_story(buf_story)
         
