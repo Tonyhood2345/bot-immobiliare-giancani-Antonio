@@ -12,8 +12,9 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
 # !!! IMPORTANTE: Se usi GitHub Secrets, questo verrà sovrascritto dalla variabile d'ambiente.
-# Se lo lanci dal PC, incolla il token qui sotto.
-FACEBOOK_TOKEN = os.environ.get("EAA6lgElZB77cBQZAkBVHctALZBZCtxUSkV2ETdZCf4pLDXEnGGEDfaAuYhY6hKD0MJ6iHqtk3hZBdpTTUPA8yUdbwBai7z5vimZAEf0LafZBbZCVbxo3jbdA8Vjdk8M7zJrQnjPRk8YHp6eZA1dgpbLl0UQi2ZAnrXgjsev5Tg827wvfSPWw6m1tkqfIjpzwxD8B6kC9BDEbtXE44zruJkUzDtkRUryzXLRuqGSEqRZAqEqdqc9GQ0Ywx3MZD") 
+# Versione corretta per GitHub:
+FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
+
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
