@@ -24,7 +24,8 @@ jobs:
 
       - name: Esegui il Bot Mindset
         env:
+          # Qui colleghiamo i "tubi": a sinistra il nome che vuole Python, a destra il Segreto di GitHub
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
-          AGENCY_TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}  # <--- CORRETTO: Ora Python lo legge!
           MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
         run: python main.py
