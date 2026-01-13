@@ -14,6 +14,8 @@ from PIL import Image, ImageOps, ImageDraw, ImageFont
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
+# NUOVO: Recuperiamo l'URL di Make
+MAKE_WEBHOOK_URL = os.environ.get("MAKE_WEBHOOK_URL")
 
 # ID PAGINA AZIENDALE (Antonio Giancani)
 PAGE_ID = "108297671444008"
@@ -206,7 +208,7 @@ def genera_coaching(row):
     elif "disciplina" in cat: msg = "La costanza batte l'intensità."
     return f"{intro}\n{msg}"
 
-# --- 9. SOCIAL ---
+# --- 9. SOCIAL & MAKE ---
 def send_telegram(img_bytes, caption):
     if not TELEGRAM_TOKEN: return
     try:
@@ -218,58 +220,68 @@ def send_telegram(img_bytes, caption):
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
 # ==============================================================================
-# 🔥 FUNZIONI FACEBOOK (SEMPLIFICATE COME NEL BOT CHIESA) 🔥
+# 🔥 FUNZIONE PER MAKE.COM (NUOVA) 🔥
 # ==============================================================================
-def post_facebook_feed(img_bytes, message):
-    if not FACEBOOK_TOKEN: 
-        print("❌ Token Facebook mancante")
+def send_to_make(img_bytes, caption):
+    if not MAKE_WEBHOOK_URL:
+        print("⚠️ Variabile MAKE_WEBHOOK_URL mancante. Salto invio a Make.")
         return
-        
-    print("🚀 Invio Feed Facebook...")
-    # Usa il metodo semplice (token nell'URL) come nel bot Chiesa
+
+    print("🚀 Invio dati a Make.com...")
+    
+    # Prepariamo i dati come "Multipart Upload" (simuliamo un form web)
+    # 1. Il file immagine
+    files = {
+        'file': ('post_mindset.png', img_bytes, 'image/png')
+    }
+    # 2. I dati testuali
+    data = {
+        'text': caption,
+        'source': 'GitHub Action'
+    }
+    
+    try:
+        response = requests.post(MAKE_WEBHOOK_URL, files=files, data=data)
+        if response.status_code == 200:
+            print("✅ Dati inviati a Make con successo!")
+        else:
+            print(f"⚠️ Errore risposta Make: {response.status_code} - {response.text}")
+    except Exception as e:
+        print(f"❌ Errore connessione a Make: {e}")
+
+# Le vecchie funzioni Facebook (opzionali se usi Make)
+def post_facebook_feed(img_bytes, message):
+    if not FACEBOOK_TOKEN: return
+    print("🚀 Invio Feed Facebook (Diretto)...")
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('img.png', img_bytes, 'image/png')}
     data = {'message': message, 'published': 'true'}
-    
-    try:
-        requests.post(url, files=files, data=data)
-        print("✅ Facebook Feed OK")
-    except Exception as e: 
-        print(f"❌ Facebook Feed Error: {e}")
+    try: requests.post(url, files=files, data=data)
+    except: pass
 
 def post_facebook_story(img_bytes):
-    if not FACEBOOK_TOKEN: 
-        print("❌ Token Facebook mancante")
-        return
-        
-    print("🚀 Invio Storia Facebook...")
-    # Usa il metodo semplice (token nell'URL)
+    if not FACEBOOK_TOKEN: return
+    print("🚀 Invio Storia Facebook (Diretto)...")
     url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
     files = {'file': ('story.png', img_bytes, 'image/png')}
-    
-    try:
-        requests.post(url, files=files)
-        print("✅ Facebook Storia OK")
-    except Exception as e: 
-        print(f"❌ Facebook Storia Error: {e}")
+    try: requests.post(url, files=files)
+    except: pass
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("🚀 Avvio Bot Mindset (Versione Semplificata)...")
+    print("🚀 Avvio Bot Mindset...")
     row = get_random_quote()
     if row is not None:
         print(f"💼 Mindset: {row['Categoria']}")
         
-        # 1. Crea immagine QUADRATA per il Feed
+        # 1. Crea immagine QUADRATA
         img_square = add_branding(create_quote_image(row))
-        
         buf_feed = BytesIO()
         img_square.save(buf_feed, format='PNG')
         buf_feed.seek(0)
         
-        # 2. Crea immagine VERTICALE per la Storia
+        # 2. Crea immagine VERTICALE
         img_story = create_story_image(img_square)
-        
         buf_story = BytesIO()
         img_story.save(buf_story, format='PNG')
         buf_story.seek(0)
@@ -284,13 +296,22 @@ if __name__ == "__main__":
         )
         
         # 3. INVIO
+        # Invio a Telegram (come prima)
         send_telegram(buf_feed, caption)
         
+        # Reset del buffer prima di riusarlo
         buf_feed.seek(0)
-        post_facebook_feed(buf_feed, caption)
         
-        buf_story.seek(0)
-        post_facebook_story(buf_story)
+        # 🔥 NUOVO: INVIO A MAKE.COM 🔥
+        # Inviamo l'immagine quadrata e il testo
+        send_to_make(buf_feed, caption)
+        
+        # (Opzionale) Se vuoi mantenere anche l'invio diretto Facebook via Python, lascialo attivo:
+        # buf_feed.seek(0)
+        # post_facebook_feed(buf_feed, caption)
+        # buf_story.seek(0)
+        # post_facebook_story(buf_story)
         
     else:
         print("⚠️ Nessuna frase trovata nel CSV")
+
