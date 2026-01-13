@@ -20,12 +20,17 @@ jobs:
           python-version: '3.9'
 
       - name: Installa le librerie
+        # Ho aggiunto 'requests' esplicitamente per sicurezza, anche se pandas spesso lo include
         run: pip install pandas matplotlib requests pillow
 
       - name: Esegui il Bot Mindset
         env:
-          # Qui colleghiamo i "tubi": a sinistra il nome che vuole Python, a destra il Segreto di GitHub
+          # Variabili esistenti
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
-          TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}  # <--- CORRETTO: Ora Python lo legge!
+          TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}
           MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
+          
+          # NUOVA VARIABILE: Passiamo l'URL di Make allo script Python
+          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK }} 
+          
         run: python main.py
