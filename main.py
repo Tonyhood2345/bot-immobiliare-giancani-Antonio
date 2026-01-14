@@ -1,20 +1,17 @@
 import os
 import requests
 import pandas as pd
-import matplotlib
-matplotlib.use('Agg') 
-import matplotlib.pyplot as plt
 import textwrap
 import random
-import time 
+import time
 from io import BytesIO
-from PIL import Image, ImageOps, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont
 
 # --- CONFIGURAZIONE ---
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
-# NUOVO: Recuperiamo l'URL di Make
+# Recuperiamo l'URL di Make dalle variabili d'ambiente
 MAKE_WEBHOOK_URL = os.environ.get("MAKE_WEBHOOK_URL")
 
 # ID PAGINA AZIENDALE (Antonio Giancani)
@@ -22,7 +19,7 @@ PAGE_ID = "108297671444008"
 
 CSV_FILE = "Mindset.csv"
 LOGO_PATH = "faccia.png"
-FONT_NAME = "arial.ttf" 
+FONT_NAME = "arial.ttf"
 
 # --- 1. GESTIONE DATI ---
 def get_random_quote():
@@ -210,7 +207,9 @@ def genera_coaching(row):
 
 # --- 9. SOCIAL & MAKE ---
 def send_telegram(img_bytes, caption):
-    if not TELEGRAM_TOKEN: return
+    if not TELEGRAM_TOKEN: 
+        print("⚠️ Token Telegram mancante. Salto.")
+        return
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
         files = {'photo': ('img.png', img_bytes, 'image/png')}
@@ -219,22 +218,19 @@ def send_telegram(img_bytes, caption):
         print("✅ Telegram OK")
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
-# ==============================================================================
-# 🔥 FUNZIONE PER MAKE.COM (NUOVA) 🔥
-# ==============================================================================
 def send_to_make(img_bytes, caption):
+    """Invia dati e immagine a Make.com"""
     if not MAKE_WEBHOOK_URL:
         print("⚠️ Variabile MAKE_WEBHOOK_URL mancante. Salto invio a Make.")
         return
 
     print("🚀 Invio dati a Make.com...")
     
-    # Prepariamo i dati come "Multipart Upload" (simuliamo un form web)
-    # 1. Il file immagine
+    # 1. File Immagine
     files = {
         'file': ('post_mindset.png', img_bytes, 'image/png')
     }
-    # 2. I dati testuali
+    # 2. Dati Testuali
     data = {
         'text': caption,
         'source': 'GitHub Action'
@@ -248,24 +244,6 @@ def send_to_make(img_bytes, caption):
             print(f"⚠️ Errore risposta Make: {response.status_code} - {response.text}")
     except Exception as e:
         print(f"❌ Errore connessione a Make: {e}")
-
-# Le vecchie funzioni Facebook (opzionali se usi Make)
-def post_facebook_feed(img_bytes, message):
-    if not FACEBOOK_TOKEN: return
-    print("🚀 Invio Feed Facebook (Diretto)...")
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos?access_token={FACEBOOK_TOKEN}"
-    files = {'file': ('img.png', img_bytes, 'image/png')}
-    data = {'message': message, 'published': 'true'}
-    try: requests.post(url, files=files, data=data)
-    except: pass
-
-def post_facebook_story(img_bytes):
-    if not FACEBOOK_TOKEN: return
-    print("🚀 Invio Storia Facebook (Diretto)...")
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photo_stories?access_token={FACEBOOK_TOKEN}"
-    files = {'file': ('story.png', img_bytes, 'image/png')}
-    try: requests.post(url, files=files)
-    except: pass
 
 # --- MAIN ---
 if __name__ == "__main__":
@@ -296,22 +274,15 @@ if __name__ == "__main__":
         )
         
         # 3. INVIO
-        # Invio a Telegram (come prima)
+        
+        # Telegram
         send_telegram(buf_feed, caption)
         
-        # Reset del buffer prima di riusarlo
+        # Reset del buffer prima di riusarlo per Make
         buf_feed.seek(0)
         
-        # 🔥 NUOVO: INVIO A MAKE.COM 🔥
-        # Inviamo l'immagine quadrata e il testo
+        # Make.com (Nuovo Webhook)
         send_to_make(buf_feed, caption)
-        
-        # (Opzionale) Se vuoi mantenere anche l'invio diretto Facebook via Python, lascialo attivo:
-        # buf_feed.seek(0)
-        # post_facebook_feed(buf_feed, caption)
-        # buf_story.seek(0)
-        # post_facebook_story(buf_story)
         
     else:
         print("⚠️ Nessuna frase trovata nel CSV")
-
