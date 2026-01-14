@@ -2,7 +2,7 @@ name: Bot Mindset Automatico
 
 on:
   schedule:
-    # Ore 10:30 UTC = 11:30 Italia
+    # Ore 10:30 UTC = 11:30 Italia (Inverno) / 12:30 (Estate)
     - cron: '30 10 * * *'
   workflow_dispatch:
 
@@ -20,17 +20,13 @@ jobs:
           python-version: '3.9'
 
       - name: Installa le librerie
-        # Ho aggiunto 'requests' esplicitamente per sicurezza, anche se pandas spesso lo include
         run: pip install pandas matplotlib requests pillow
 
       - name: Esegui il Bot Mindset
         env:
-          # Variabili esistenti
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}
           MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
-          
           # NUOVA VARIABILE: Passiamo l'URL di Make allo script Python
           MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK }} 
-          
         run: python main.py
