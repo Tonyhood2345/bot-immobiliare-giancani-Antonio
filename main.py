@@ -6,16 +6,14 @@ import random
 import time
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
+import urllib.parse
 
 # --- CONFIGURAZIONE ---
+PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "108297671444008")
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
-# Recuperiamo l'URL di Make dalle variabili d'ambiente
 MAKE_WEBHOOK_URL = os.environ.get("MAKE_WEBHOOK_URL")
-
-# ID PAGINA AZIENDALE (Antonio Giancani)
-PAGE_ID = "108297671444008"
 
 CSV_FILE = "Mindset.csv"
 LOGO_PATH = "faccia.png"
@@ -24,6 +22,9 @@ FONT_NAME = "arial.ttf"
 # --- 1. GESTIONE DATI ---
 def get_random_quote():
     try:
+        if not os.path.exists(CSV_FILE):
+            print(f"⚠️ File {CSV_FILE} non trovato!")
+            return None
         df = pd.read_csv(CSV_FILE)
         if df.empty: return None
         return df.sample(1).iloc[0]
@@ -57,33 +58,52 @@ def get_image_prompt(categoria):
     elif "disciplina" in cat or "focus" in cat: return random.choice(prompts_focus)
     else: return random.choice(prompts_business)
 
-# --- 3. AI & IMMAGINI ---
+# --- 3. AI & IMMAGINI (Con Sistema Anti-Blocco) ---
 def get_ai_image(prompt_text):
-    print(f"🎨 Generazione immagine: {prompt_text}")
-    clean_prompt = prompt_text.replace(" ", "%20")
-    url = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true"
+    print(f"🎨 Generazione immagine AI...")
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
+    }
     
+    # Tentativo 1: Pollinations AI
     try:
-        response = requests.get(url, timeout=20)
-        if response.status_code == 200:
-            return Image.open(BytesIO(response.content)).convert("RGBA")
-    except:
-        print("⚠️ Primo tentativo AI fallito. Riprovo tra 2 secondi...")
-        time.sleep(2)
-    
-    try:
-        response = requests.get(url, timeout=20)
-        if response.status_code == 200:
-            print("✅ Immagine recuperata al secondo tentativo.")
-            return Image.open(BytesIO(response.content)).convert("RGBA")
+        clean_prompt = urllib.parse.quote(prompt_text)
+        random_seed = random.randint(1, 99999)
+        url_ai = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true&seed={random_seed}"
+        
+        res_ai = requests.get(url_ai, headers=headers, timeout=20)
+        if res_ai.status_code == 200:
+            try:
+                img = Image.open(BytesIO(res_ai.content)).convert("RGBA")
+                print("✅ Sfondo AI scaricato con successo!")
+                return img
+            except Exception as e_img:
+                print(f"⚠️ Il server AI ha inviato un errore: {e_img}")
+        else:
+            print(f"⚠️ Server AI bloccato (Codice: {res_ai.status_code}). Passo al Piano B...")
     except Exception as e:
-        print(f"❌ Errore AI definitivo: {e}")
+        print(f"⚠️ Errore connessione AI: {e}. Passo al Piano B...")
 
-    return Image.new('RGBA', (1080, 1080), (20, 20, 20))
+    # Tentativo 2: Picsum (Sicuro al 100%)
+    try:
+        print("🔄 Scaricamento immagine stock sicura (Picsum)...")
+        seed = random.randint(1, 99999)
+        url_stock = f"https://picsum.photos/seed/{seed}/1080/1080?grayscale&blur=2"
+        res_stock = requests.get(url_stock, timeout=15)
+        if res_stock.status_code == 200:
+            img_stock = Image.open(BytesIO(res_stock.content)).convert("RGBA")
+            print("✅ Sfondo stock sicuro scaricato!")
+            return img_stock
+    except Exception as e:
+        print(f"⚠️ Errore su Picsum: {e}")
+
+    # Tentativo 3: Sfondo elegante
+    print("⚠️ Uso sfondo grigio scuro di emergenza.")
+    return Image.new('RGBA', (1080, 1080), (25, 25, 25))
 
 # --- 4. FUNZIONE FONT ---
 def load_font(size):
-    fonts_to_try = [FONT_NAME, "DejaVuSans-Bold.ttf", "arial.ttf"]
+    fonts_to_try = [FONT_NAME, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "arial.ttf"]
     for font_path in fonts_to_try:
         try:
             return ImageFont.truetype(font_path, size)
@@ -95,81 +115,73 @@ def create_quote_image(row):
     prompt = get_image_prompt(row['Categoria'])
     base_img = get_ai_image(prompt).resize((1080, 1080))
     
-    overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay)
+    overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 100)) # Leggero inscurimento generale
+    base_img = Image.alpha_composite(base_img, overlay)
+    
+    overlay_txt = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay_txt)
     W, H = base_img.size
     
-    font_txt = load_font(100)  
-    font_author = load_font(60)   
+    font_txt = load_font(85)  
+    font_author = load_font(50)   
 
     text = f"“{row['Frase']}”"
-    lines = textwrap.wrap(text, width=16) 
+    lines = textwrap.wrap(text, width=20) 
     
-    line_height = 110
+    line_height = 95
     text_block_height = len(lines) * line_height
     author_height = 80
     total_content_height = text_block_height + author_height
     
-    start_y = ((H - total_content_height) / 2) - 100 
+    start_y = ((H - total_content_height) / 2) - 80 
     
+    # Box testo
     padding = 50
-    box_left = 40
-    box_top = start_y - padding
-    box_right = W - 40
-    box_bottom = start_y + total_content_height + padding
+    draw.rectangle([(40, start_y - padding), (W - 40, start_y + total_content_height + padding)], fill=(0, 0, 0, 170))
     
-    draw.rectangle([(box_left, box_top), (box_right, box_bottom)], fill=(0, 0, 0, 150), outline=None)
-    
-    final_img = Image.alpha_composite(base_img, overlay)
-    draw_final = ImageDraw.Draw(final_img)
-    
+    # Scrittura Testo
     current_y = start_y
     for line in lines:
-        bbox = draw_final.textbbox((0, 0), line, font=font_txt)
-        w = bbox[2] - bbox[0]
-        draw_final.text(((W - w)/2, current_y), line, font=font_txt, fill="white")
+        draw.text((W//2, current_y), line, font=font_txt, fill="white", anchor="mt")
         current_y += line_height
         
+    # Autore
     author = f"- {str(row['Autore'])} -"
-    bbox_auth = draw_final.textbbox((0, 0), author, font=font_author)
-    w_auth = bbox_auth[2] - bbox_auth[0]
-    draw_final.text(((W - w_auth)/2, current_y + 25), author, font=font_author, fill="#FFD700")
+    draw.text((W//2, current_y + 25), author, font=font_author, fill="#FFD700", anchor="mt")
 
-    return final_img
+    return Image.alpha_composite(base_img, overlay_txt)
 
 # --- 6. AGGIUNTA BRANDING ---
 def add_branding(img):
-    logo_w, logo_h, logo_x, logo_y = 0, 0, 0, 0
     margin_left = 40
     margin_bottom = 40
+    logo_w, logo_h, logo_x, logo_y = 0, 0, 0, 0
 
     if os.path.exists(LOGO_PATH):
         try:
             face = Image.open(LOGO_PATH).convert("RGBA")
             logo_w = int(img.width * 0.20)
-            logo_h = int(logo_w * (face.height / face.width))
-            face = face.resize((logo_w, logo_h))
+            logo_h = int(logo_w * (face.height / float(face.width)))
+            face = face.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
             
             logo_x = margin_left
             logo_y = img.height - logo_h - margin_bottom
-            
             img.paste(face, (logo_x, logo_y), face)
         except Exception as e:
-            print(f"⚠️ Errore caricamento logo: {e}")
+            print(f"⚠️ Errore caricamento logo faccia: {e}")
 
     draw = ImageDraw.Draw(img)
-    font_name = load_font(55)
+    font_name = load_font(50)
     text = "Antonio Giancani"
     
-    bbox = draw.textbbox((0, 0), text, font=font_name)
-    text_h = bbox[3] - bbox[1]
-    
+    # Calcolo posizione del testo "Antonio Giancani"
     if logo_w > 0:
         text_x = logo_x + logo_w + 25
-        text_y = logo_y + (logo_h - text_h) / 2
+        # Approssimiamo l'altezza del testo per centrarlo verticalmente rispetto al logo
+        text_y = logo_y + (logo_h // 2) - 25
     else:
         text_x = margin_left
-        text_y = img.height - text_h - margin_bottom
+        text_y = img.height - 80 - margin_bottom
 
     draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
     return img
@@ -188,81 +200,84 @@ def create_story_image(square_img):
     font_story = load_font(60)
     text_top = "NUOVO POST ⤵"
     
-    bbox = draw.textbbox((0, 0), text_top, font=font_story)
-    w_text = bbox[2] - bbox[0]
-    
-    draw.text(((story_w - w_text)/2, y_pos - 150), text_top, font=font_story, fill="#FFD700")
-    
+    draw.text((story_w//2, y_pos - 150), text_top, font=font_story, fill="#FFD700", anchor="mt")
     return story_img
 
 # --- 8. TESTO POST ---
 def genera_coaching(row):
     cat = str(row['Categoria']).lower()
     intro = random.choice(["🚀 𝗠𝗶𝗻𝗱𝘀𝗲𝘁 𝗜𝗺𝗺𝗼𝗯𝗶𝗹𝗶𝗮𝗿𝗲:", "💡 𝗖𝗼𝗻𝘀𝗶𝗴𝗹𝗶𝗼 𝗱𝗲𝗹 𝗴𝗶𝗼𝗿𝗻𝗼:", "🏠 𝗩𝗶𝘀𝗶𝗼𝗻𝗲 𝗲 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗼:"])
-    msg = "Il tuo unico limite è la visione che hai di te stesso. Alza l'asticella."
+    
     if "motiva" in cat: msg = "Non aspettare il momento giusto, crealo. Vince chi ha fame."
     elif "vendita" in cat: msg = "La vendita non è convincere, è aiutare il cliente a decidere."
     elif "disciplina" in cat: msg = "La costanza batte l'intensità."
+    else: msg = "Il tuo unico limite è la visione che hai di te stesso. Alza l'asticella."
+    
     return f"{intro}\n{msg}"
 
 # --- 9. SOCIAL & MAKE ---
 def send_telegram(img_bytes, caption):
-    if not TELEGRAM_TOKEN: 
-        print("⚠️ Token Telegram mancante. Salto.")
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: 
+        print("⚠️ Telegram saltato (mancano i segreti).")
         return
+    print("✈️ Invio Telegram...")
     try:
         url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-        files = {'photo': ('img.png', img_bytes, 'image/png')}
+        files = {'photo': ('post.png', img_bytes)}
         data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption}
-        requests.post(url, files=files, data=data)
-        print("✅ Telegram OK")
+        r = requests.post(url, files=files, data=data)
+        if r.status_code == 200: print("✅ Telegram OK")
+        else: print(f"❌ Telegram Fail: {r.text}")
     except Exception as e: print(f"❌ Telegram Error: {e}")
 
-def send_to_make(img_bytes, caption):
-    """Invia dati e immagine a Make.com"""
-    if not MAKE_WEBHOOK_URL:
-        print("⚠️ Variabile MAKE_WEBHOOK_URL mancante. Salto invio a Make.")
+def post_facebook(img_bytes, caption):
+    id_sicuro = str(PAGE_ID)[:5] if PAGE_ID else "NESSUN_ID"
+    print(f"🚀 Debug FB: ID={id_sicuro}... Token={bool(FACEBOOK_TOKEN)}")
+    
+    if not PAGE_ID or not FACEBOOK_TOKEN:
+        print("❌ Facebook saltato: PAGE_ID o TOKEN mancante nei Secrets!")
         return
-
-    print("🚀 Invio dati a Make.com...")
-    
-    # 1. File Immagine
-    files = {
-        'file': ('post_mindset.png', img_bytes, 'image/png')
-    }
-    # 2. Dati Testuali
-    data = {
-        'text': caption,
-        'source': 'GitHub Action'
-    }
-    
+        
     try:
+        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos"
+        payload = {'message': caption, 'access_token': FACEBOOK_TOKEN, 'published': 'true'}
+        files = {'source': ('post.png', img_bytes)}
+        r = requests.post(url, data=payload, files=files)
+        if r.status_code == 200: print("✅ Facebook OK")
+        else: print(f"❌ Errore API Facebook: {r.text}")
+    except Exception as e: print(f"❌ Facebook Fail: {e}")
+
+def send_to_make(img_bytes, caption):
+    if not MAKE_WEBHOOK_URL:
+        print("⚠️ Make.com saltato (URL mancante).")
+        return
+    print("📡 Invio Make.com...")
+    try:
+        files = {'file': ('post_mindset.png', img_bytes)}
+        data = {'text': caption, 'source': 'GitHub Action'}
         response = requests.post(MAKE_WEBHOOK_URL, files=files, data=data)
-        if response.status_code == 200:
-            print("✅ Dati inviati a Make con successo!")
-        else:
-            print(f"⚠️ Errore risposta Make: {response.status_code} - {response.text}")
-    except Exception as e:
-        print(f"❌ Errore connessione a Make: {e}")
+        if response.status_code == 200: print("✅ Make Webhook OK")
+        else: print(f"⚠️ Errore Make: {response.status_code}")
+    except Exception as e: print(f"❌ Errore Make: {e}")
 
 # --- MAIN ---
 if __name__ == "__main__":
-    print("🚀 Avvio Bot Mindset...")
+    print("🚀 Avvio Bot Mindset v2.0...")
     row = get_random_quote()
+    
     if row is not None:
-        print(f"💼 Mindset: {row['Categoria']}")
+        print(f"💼 Categoria: {row['Categoria']}")
         
-        # 1. Crea immagine QUADRATA
+        # 1. Crea Immagine Square (Feed)
         img_square = add_branding(create_quote_image(row))
         buf_feed = BytesIO()
         img_square.save(buf_feed, format='PNG')
-        buf_feed.seek(0)
+        img_bytes = buf_feed.getvalue()
         
-        # 2. Crea immagine VERTICALE
+        # 2. Crea Immagine Story (Opzionale, al momento salvata ma non inviata)
         img_story = create_story_image(img_square)
         buf_story = BytesIO()
         img_story.save(buf_story, format='PNG')
-        buf_story.seek(0)
         
         # Testi
         coaching_text = genera_coaching(row)
@@ -274,15 +289,9 @@ if __name__ == "__main__":
         )
         
         # 3. INVIO
-        
-        # Telegram
-        send_telegram(buf_feed, caption)
-        
-        # Reset del buffer prima di riusarlo per Make
-        buf_feed.seek(0)
-        
-        # Make.com (Nuovo Webhook)
-        send_to_make(buf_feed, caption)
+        send_telegram(img_bytes, caption)
+        post_facebook(img_bytes, caption)
+        send_to_make(img_bytes, caption)
         
     else:
-        print("⚠️ Nessuna frase trovata nel CSV")
+        print("⚠️ Nessuna frase trovata nel CSV.")
