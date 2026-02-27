@@ -3,17 +3,15 @@ import requests
 import pandas as pd
 import textwrap
 import random
-import time
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import urllib.parse
 
 # --- CONFIGURAZIONE ---
-PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "108297671444008")
+PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "234931856561526")
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
-MAKE_WEBHOOK_URL = os.environ.get("MAKE_WEBHOOK_URL")
 
 CSV_FILE = "Mindset.csv"
 LOGO_PATH = "faccia.png"
@@ -115,7 +113,7 @@ def create_quote_image(row):
     prompt = get_image_prompt(row['Categoria'])
     base_img = get_ai_image(prompt).resize((1080, 1080))
     
-    overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 100)) # Leggero inscurimento generale
+    overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 100))
     base_img = Image.alpha_composite(base_img, overlay)
     
     overlay_txt = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
@@ -177,7 +175,6 @@ def add_branding(img):
     # Calcolo posizione del testo "Antonio Giancani"
     if logo_w > 0:
         text_x = logo_x + logo_w + 25
-        # Approssimiamo l'altezza del testo per centrarlo verticalmente rispetto al logo
         text_y = logo_y + (logo_h // 2) - 25
     else:
         text_x = margin_left
@@ -215,7 +212,7 @@ def genera_coaching(row):
     
     return f"{intro}\n{msg}"
 
-# --- 9. SOCIAL & MAKE ---
+# --- 9. SOCIAL ---
 def send_telegram(img_bytes, caption):
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: 
         print("⚠️ Telegram saltato (mancano i segreti).")
@@ -247,22 +244,9 @@ def post_facebook(img_bytes, caption):
         else: print(f"❌ Errore API Facebook: {r.text}")
     except Exception as e: print(f"❌ Facebook Fail: {e}")
 
-def send_to_make(img_bytes, caption):
-    if not MAKE_WEBHOOK_URL:
-        print("⚠️ Make.com saltato (URL mancante).")
-        return
-    print("📡 Invio Make.com...")
-    try:
-        files = {'file': ('post_mindset.png', img_bytes)}
-        data = {'text': caption, 'source': 'GitHub Action'}
-        response = requests.post(MAKE_WEBHOOK_URL, files=files, data=data)
-        if response.status_code == 200: print("✅ Make Webhook OK")
-        else: print(f"⚠️ Errore Make: {response.status_code}")
-    except Exception as e: print(f"❌ Errore Make: {e}")
-
 # --- MAIN ---
 if __name__ == "__main__":
-    print("🚀 Avvio Bot Mindset v2.0...")
+    print("🚀 Avvio Bot Mindset v2.1...")
     row = get_random_quote()
     
     if row is not None:
@@ -274,7 +258,7 @@ if __name__ == "__main__":
         img_square.save(buf_feed, format='PNG')
         img_bytes = buf_feed.getvalue()
         
-        # 2. Crea Immagine Story (Opzionale, al momento salvata ma non inviata)
+        # 2. Crea Immagine Story (Opzionale, al momento salvata ma non inviata in API)
         img_story = create_story_image(img_square)
         buf_story = BytesIO()
         img_story.save(buf_story, format='PNG')
@@ -291,7 +275,6 @@ if __name__ == "__main__":
         # 3. INVIO
         send_telegram(img_bytes, caption)
         post_facebook(img_bytes, caption)
-        send_to_make(img_bytes, caption)
         
     else:
         print("⚠️ Nessuna frase trovata nel CSV.")
