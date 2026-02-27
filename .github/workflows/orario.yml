@@ -24,9 +24,8 @@ jobs:
 
       - name: Esegui il Bot Mindset
         env:
-          FACEBOOK_PAGE_ID: "108297671444008" # ID fisso come da tuo script
+          FACEBOOK_PAGE_ID: "234931856561526"
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.AGENCY_TELEGRAM_TOKEN }}
           MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
-          MAKE_WEBHOOK_URL: ${{ secrets.MAKE_WEBHOOK }} 
         run: python main.py
