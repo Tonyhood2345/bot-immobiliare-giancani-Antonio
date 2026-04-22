@@ -271,6 +271,7 @@ if __name__ == "__main__":
             f"────────────────\n{coaching_text}\n────────────────\n\n"
             f"👤 Antonio Giancani\n🏠 Agente Immobiliare\n\n#immobiliare #mindset #successo"
         )
+
         
         # 3. INVIO
         send_telegram(img_bytes, caption)
