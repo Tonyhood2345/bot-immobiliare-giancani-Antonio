@@ -21,11 +21,11 @@ jobs:
         run: |
           pip install requests pillow edge-tts gtts imageio-ffmpeg urllib3
 
-      - name: 🎬 Genera Video Reels e Invia su Telegram
+      - name: 🎬 Genera Video Reels e Pubblica su Facebook
         env:
           FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
           FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           MINDSET_CHAT_ID: ${{ secrets.MINDSET_CHAT_ID }}
         run: |
-          python bot_mindset_antonio_giancani.py
+          python bot_mindset_antonio_giancani.py --auto-publish
