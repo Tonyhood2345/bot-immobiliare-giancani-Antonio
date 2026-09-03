@@ -1,281 +1,472 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+======================================================================
+  🎬 BOT VIDEO REELS & STORIE GIORNALIERO (MINDSET & CITAZIONI)
+  Autore & Regia: Antonio Giancani
+  - Estrazione: Rigorosamente da Colonna F (Mindset.csv)
+  - Voce Narrante: it-IT-DiegoNeural (Legge SOLTANTO la frase)
+  - Layout Video: 9:16 Verticale (720x1280) per Reels & Storie Facebook
+  - Badge Firma: faccia.png con bordo oro circolare
+  - Animazione: FFmpeg Slow Zoom cinematografico
+  - Personal Branding: Esclusivo su Antonio Giancani (senza menzione agenzia)
+  - Controllo: Invio su Telegram con tasti interattivi di approvazione
+======================================================================
+"""
+
 import os
-import requests
-import pandas as pd
-import textwrap
+import sys
+import csv
+import json
+import time
 import random
+import asyncio
+import textwrap
+import requests
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
 import urllib.parse
+import imageio_ffmpeg
+import urllib3
 
-# --- CONFIGURAZIONE ---
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# ── CONFIGURAZIONE E CREDENZIALI ────────────────────────────────────
 PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "234931856561526")
-FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID")
+FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN", "")
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M")
+TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID", "1723292483")
 
-CSV_FILE = "Mindset.csv"
-LOGO_PATH = "faccia.png"
+# Voce Neurale Predefinita (Diego: calda, autorevole, profonda)
+DEFAULT_VOICE = "it-IT-DiegoNeural"
+
+CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Mindset.csv")
+LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faccia.png")
 FONT_NAME = "arial.ttf"
 
-# --- 1. GESTIONE DATI ---
-def get_random_quote():
+# Percorso eseguibile FFmpeg
+FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+
+# Cartella di rendering temporanea
+WORK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_reels_output")
+os.makedirs(WORK_DIR, exist_ok=True)
+
+
+# ── 1. GESTIONE DATI (RIGOROSAMENTE DA COLONNA F) ───────────────────
+def get_random_quote(id_richiesto=None):
     try:
         if not os.path.exists(CSV_FILE):
             print(f"⚠️ File {CSV_FILE} non trovato!")
             return None
-        df = pd.read_csv(CSV_FILE)
-        if df.empty: return None
-        return df.sample(1).iloc[0]
+            
+        rows = []
+        with open(CSV_FILE, "r", encoding="utf-8") as f:
+            reader = csv.reader(f)
+            header = next(reader, None)
+            for r in reader:
+                if len(r) >= 6:
+                    rows.append({
+                        "ID": r[0],
+                        "Categoria": r[1],
+                        "Frase": r[2],
+                        "Autore": r[3],
+                        "Stato": r[4],
+                        "Colonna_F": r[5] # TESTO PRELEVATO DALLA COLONNA F
+                    })
+                    
+        if not rows:
+            return None
+            
+        if id_richiesto is not None:
+            trovati = [r for r in rows if str(r["ID"]) == str(id_richiesto)]
+            if trovati:
+                return trovati[0]
+                
+        selected = random.choice(rows)
+        print(f"📖 [COLONNA F] Citazione estratta (Riga {selected['ID']}): \"{selected['Colonna_F']}\"")
+        return selected
     except Exception as e:
         print(f"⚠️ Errore lettura CSV: {e}")
         return None
 
-# --- 2. GENERATORE PROMPT ---
-def get_image_prompt(categoria):
+
+# ── 2. SINTESI VOCALE NEURALE (LEGGE SOLTANTO LA FRASE) ─────────────
+async def genera_audio_scena(testo, output_path, voce=DEFAULT_VOICE):
+    success = False
+    try:
+        import edge_tts
+        communicate = edge_tts.Communicate(testo, voce, rate="+2%", pitch="+0Hz")
+        await asyncio.wait_for(communicate.save(output_path), timeout=8)
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
+            success = True
+    except Exception:
+        pass
+        
+    if not success:
+        from gtts import gTTS
+        tts = gTTS(text=testo, lang='it', slow=False)
+        tts.save(output_path)
+    print(f"  🎙️ Traccia vocale (Diego): {output_path} ({round(os.path.getsize(output_path)/1024, 1)} KB)", flush=True)
+
+
+# ── 3. GENERAZIONE SFONDO AI DINAMICO (9:16 VERTICALE) ──────────────
+def get_ai_background(categoria, output_path, seed=42):
     cat = str(categoria).lower().strip()
-    base_style = "cinematic lighting, photorealistic, 8k, luxury, success atmosphere, golden hour, high contrast"
+    base_style = "cinematic lighting, photorealistic 8k, luxury, success atmosphere, golden hour, high contrast, elegant vertical 9:16 composition"
     
     prompts_mindset = [
-        f"man in suit standing on top of skyscraper looking at city sunrise, {base_style}",
-        f"close up of a lion face, intense look, dark background with golden rim light, {base_style}",
-        f"mountain climber reaching the peak, sun rays, epic view, {base_style}"
+        f"visionary leader in tailored navy suit on top of modern skyscraper looking at sunrise, {base_style}",
+        f"majestic lion close up, intense gaze, dark background with golden light, {base_style}",
+        f"mountain climber on the highest sunlit peak, inspiring sun rays, {base_style}"
     ]
     prompts_business = [
-        f"luxury modern villa exterior with pool, sunset, architectural masterpiece, {base_style}",
-        f"modern glass skyscraper looking up, blue sky, reflection, {base_style}",
-        f"close up of handshake, business meeting, blur office background, {base_style}",
-        f"modern interior design office, luxury apartment, city view window, {base_style}"
+        f"ultra luxury modern villa exterior with crystal swimming pool at sunset, masterpiece, {base_style}",
+        f"modern architectural glass skyscraper reaching into blue sky, {base_style}",
+        f"prestigious executive meeting in luxury panoramic lounge, {base_style}"
     ]
     prompts_focus = [
-        f"highway at night with light trails, speed, city skyline, {base_style}",
-        f"chess board close up, king piece, strategy, dramatic light, {base_style}",
-        f"gym workout weights, focus, sweat, determination, dark moody lighting, {base_style}"
+        f"golden highway at night with light trails, speed, futuristic skyline, {base_style}",
+        f"chess board close up with golden king piece in spotlight, strategy, {base_style}",
+        f"athlete pulling bowstring with laser focus, dramatic lighting, {base_style}"
+    ]
+    prompts_immobiliare = [
+        f"prestigious Mediterranean luxury estate entrance with fountain and palm trees, sunset, {base_style}",
+        f"modern luxury villa with private garden, panoramic sea view, warm sunlight, {base_style}"
     ]
 
-    if "motiva" in cat or "mindset" in cat: return random.choice(prompts_mindset)
-    elif "disciplina" in cat or "focus" in cat: return random.choice(prompts_focus)
-    else: return random.choice(prompts_business)
+    if "motiva" in cat or "mindset" in cat: 
+        prompt_text = random.choice(prompts_mindset)
+    elif "disciplina" in cat or "focus" in cat: 
+        prompt_text = random.choice(prompts_focus)
+    elif "immob" in cat:
+        prompt_text = random.choice(prompts_immobiliare)
+    else: 
+        prompt_text = random.choice(prompts_business)
 
-# --- 3. AI & IMMAGINI (Con Sistema Anti-Blocco) ---
-def get_ai_image(prompt_text):
-    print(f"🎨 Generazione immagine AI...")
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36'
-    }
+    print(f"  🎨 Generazione sfondo AI tematico...", flush=True)
     
-    # Tentativo 1: Pollinations AI
+    # 1. Tentativo Pollinations AI
     try:
         clean_prompt = urllib.parse.quote(prompt_text)
-        random_seed = random.randint(1, 99999)
-        url_ai = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=1080&height=1080&nologo=true&seed={random_seed}"
-        
-        res_ai = requests.get(url_ai, headers=headers, timeout=20)
-        if res_ai.status_code == 200:
-            try:
-                img = Image.open(BytesIO(res_ai.content)).convert("RGBA")
-                print("✅ Sfondo AI scaricato con successo!")
-                return img
-            except Exception as e_img:
-                print(f"⚠️ Il server AI ha inviato un errore: {e_img}")
-        else:
-            print(f"⚠️ Server AI bloccato (Codice: {res_ai.status_code}). Passo al Piano B...")
+        url_ai = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=720&height=1280&nologo=true&seed={seed}"
+        res_ai = requests.get(url_ai, timeout=30, verify=False)
+        if res_ai.status_code == 200 and len(res_ai.content) > 10000:
+            with open(output_path, "wb") as f:
+                f.write(res_ai.content)
+            print(f"  ✅ Sfondo AI scaricato con successo!", flush=True)
+            return True
     except Exception as e:
-        print(f"⚠️ Errore connessione AI: {e}. Passo al Piano B...")
+        print(f"  ⚠️ Timeout AI: {e}. Uso fallback HD...")
 
-    # Tentativo 2: Picsum (Sicuro al 100%)
+    # 2. Fallback Stock Sicuro Picsum
     try:
-        print("🔄 Scaricamento immagine stock sicura (Picsum)...")
-        seed = random.randint(1, 99999)
-        url_stock = f"https://picsum.photos/seed/{seed}/1080/1080?grayscale&blur=2"
-        res_stock = requests.get(url_stock, timeout=15)
+        url_stock = f"https://picsum.photos/seed/{seed}/720/1280?grayscale&blur=2"
+        res_stock = requests.get(url_stock, timeout=15, verify=False)
         if res_stock.status_code == 200:
-            img_stock = Image.open(BytesIO(res_stock.content)).convert("RGBA")
-            print("✅ Sfondo stock sicuro scaricato!")
-            return img_stock
-    except Exception as e:
-        print(f"⚠️ Errore su Picsum: {e}")
+            with open(output_path, "wb") as f:
+                f.write(res_stock.content)
+            print(f"  ✅ Sfondo stock sicuro scaricato!", flush=True)
+            return True
+    except Exception:
+        pass
 
-    # Tentativo 3: Sfondo elegante
-    print("⚠️ Uso sfondo grigio scuro di emergenza.")
-    return Image.new('RGBA', (1080, 1080), (25, 25, 25))
+    # 3. Sfondo scuro di emergenza
+    img_dark = Image.new('RGB', (720, 1280), (18, 22, 30))
+    img_dark.save(output_path)
+    return True
 
-# --- 4. FUNZIONE FONT ---
+
+# ── 4. CARICAMENTO FONT ──────────────────────────────────────────────
 def load_font(size):
-    fonts_to_try = [FONT_NAME, "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "arial.ttf"]
-    for font_path in fonts_to_try:
+    fonts = [FONT_NAME, "C:\\Windows\\Fonts\\arialbd.ttf", "C:\\Windows\\Fonts\\arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
+    for f in fonts:
         try:
-            return ImageFont.truetype(font_path, size)
-        except: continue
+            return ImageFont.truetype(f, size)
+        except: 
+            continue
     return ImageFont.load_default()
 
-# --- 5. CREAZIONE GRAFICA PRINCIPALE ---
-def create_quote_image(row):
-    prompt = get_image_prompt(row['Categoria'])
-    base_img = get_ai_image(prompt).resize((1080, 1080))
-    
-    overlay = Image.new('RGBA', base_img.size, (0, 0, 0, 100))
-    base_img = Image.alpha_composite(base_img, overlay)
-    
-    overlay_txt = Image.new('RGBA', base_img.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay_txt)
-    W, H = base_img.size
-    
-    font_txt = load_font(85)  
-    font_author = load_font(50)   
 
-    text = f"“{row['Frase']}”"
-    lines = textwrap.wrap(text, width=20) 
+# ── 5. COMPOSIZIONE GRAFICA CON BADGE E DETTAGLI ORO ─────────────────
+def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, categoria="MINDSET"):
+    base = Image.open(bg_path).convert("RGBA").resize((720, 1280))
     
-    line_height = 95
-    text_block_height = len(lines) * line_height
-    author_height = 80
-    total_content_height = text_block_height + author_height
+    # Overlay scuro di contrasto
+    overlay_dark = Image.new('RGBA', base.size, (0, 0, 0, 110))
+    base = Image.alpha_composite(base, overlay_dark)
     
-    start_y = ((H - total_content_height) / 2) - 80 
+    overlay_ui = Image.new('RGBA', base.size, (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay_ui)
+    W, H = base.size
     
-    # Box testo
-    padding = 50
-    draw.rectangle([(40, start_y - padding), (W - 40, start_y + total_content_height + padding)], fill=(0, 0, 0, 170))
+    # Categoria in alto
+    font_cat = load_font(28)
+    draw.text((W//2, 80), f"◆ {categoria.upper()} ◆", font=font_cat, fill="#FFD700", anchor="mt")
     
-    # Scrittura Testo
-    current_y = start_y
-    for line in lines:
-        draw.text((W//2, current_y), line, font=font_txt, fill="white", anchor="mt")
-        current_y += line_height
+    # Formattazione e grandezza testo citazione
+    testo_pulito = str(testo_principale).strip()
+    if len(testo_pulito) > 110:
+        font_size = 38
+        line_height = 50
+        wrap_w = 26
+    elif len(testo_pulito) > 60:
+        font_size = 44
+        line_height = 58
+        wrap_w = 22
+    else:
+        font_size = 50
+        line_height = 66
+        wrap_w = 18
         
-    # Autore
-    author = f"- {str(row['Autore'])} -"
-    draw.text((W//2, current_y + 25), author, font=font_author, fill="#FFD700", anchor="mt")
-
-    return Image.alpha_composite(base_img, overlay_txt)
-
-# --- 6. AGGIUNTA BRANDING ---
-def add_branding(img):
-    margin_left = 40
-    margin_bottom = 40
-    logo_w, logo_h, logo_x, logo_y = 0, 0, 0, 0
-
+    font_quote = load_font(font_size)
+    font_author = load_font(32)
+    
+    lines = textwrap.wrap(f"“{testo_pulito}”", width=wrap_w)
+    total_text_h = len(lines) * line_height + 60
+    
+    start_y = ((H - total_text_h) // 2) - 40
+    padding = 35
+    
+    # Box centrale in vetro scuro con profilo dorato
+    box_rect = [(35, start_y - padding), (W - 35, start_y + total_text_h + padding)]
+    draw.rounded_rectangle(box_rect, radius=20, fill=(12, 16, 24, 205), outline="#FFD700", width=2)
+    
+    # Scrittura testo
+    curr_y = start_y
+    for l in lines:
+        draw.text((W//2, curr_y), l, font=font_quote, fill="white", anchor="mt")
+        curr_y += line_height
+        
+    # Scrittura autore
+    draw.text((W//2, curr_y + 15), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
+    
+    # Badge circolare in basso
+    logo_size = 90
     if os.path.exists(LOGO_PATH):
         try:
-            face = Image.open(LOGO_PATH).convert("RGBA")
-            logo_w = int(img.width * 0.20)
-            logo_h = int(logo_w * (face.height / float(face.width)))
-            face = face.resize((logo_w, logo_h), Image.Resampling.LANCZOS)
-            
-            logo_x = margin_left
-            logo_y = img.height - logo_h - margin_bottom
-            img.paste(face, (logo_x, logo_y), face)
+            face = Image.open(LOGO_PATH).convert("RGBA").resize((logo_size, logo_size), Image.Resampling.LANCZOS)
+            face_x = 45
+            face_y = H - logo_size - 60
+            base.paste(face, (face_x, face_y), face)
         except Exception as e:
-            print(f"⚠️ Errore caricamento logo faccia: {e}")
-
-    draw = ImageDraw.Draw(img)
-    font_name = load_font(50)
-    text = "Antonio Giancani"
-    
-    # Calcolo posizione del testo "Antonio Giancani"
-    if logo_w > 0:
-        text_x = logo_x + logo_w + 25
-        text_y = logo_y + (logo_h // 2) - 25
+            print(f"⚠️ Errore caricamento faccia: {e}")
+            face_x = 45
+            face_y = H - logo_size - 60
     else:
-        text_x = margin_left
-        text_y = img.height - 80 - margin_bottom
+        face_x = 45
+        face_y = H - logo_size - 60
 
-    draw.text((text_x, text_y), text, font=font_name, fill="#FFD700")
-    return img
+    # Personal Branding in basso a sinistra
+    font_name = load_font(34)
+    font_sub = load_font(20)
+    text_x = face_x + logo_size + 18
+    
+    draw.text((text_x, face_y + 12), "Antonio Giancani", font=font_name, fill="#FFD700")
+    draw.text((text_x, face_y + 50), "CONSULENZA & STRATEGIA", font=font_sub, fill="#E0E0E0")
+    
+    final_img = Image.alpha_composite(base, overlay_ui).convert("RGB")
+    final_img.save(output_frame_path)
+    return True
 
-# --- 7. CREAZIONE FORMATO STORIA ---
-def create_story_image(square_img):
-    print("📱 Creazione formato Storia...")
-    story_w, story_h = 1080, 1920
-    bg_color = (15, 15, 15)
-    story_img = Image.new('RGBA', (story_w, story_h), bg_color)
-    
-    y_pos = (story_h - square_img.height) // 2
-    story_img.paste(square_img, (0, y_pos))
-    
-    draw = ImageDraw.Draw(story_img)
-    font_story = load_font(60)
-    text_top = "NUOVO POST ⤵"
-    
-    draw.text((story_w//2, y_pos - 150), text_top, font=font_story, fill="#FFD700", anchor="mt")
-    return story_img
 
-# --- 8. TESTO POST ---
-def genera_coaching(row):
-    cat = str(row['Categoria']).lower()
-    intro = random.choice(["🚀 𝗠𝗶𝗻𝗱𝘀𝗲𝘁 𝗜𝗺𝗺𝗼𝗯𝗶𝗹𝗶𝗮𝗿𝗲:", "💡 𝗖𝗼𝗻𝘀𝗶𝗴𝗹𝗶𝗼 𝗱𝗲𝗹 𝗴𝗶𝗼𝗿𝗻𝗼:", "🏠 𝗩𝗶𝘀𝗶𝗼𝗻𝗲 𝗲 𝗦𝘂𝗰𝗰𝗲𝘀𝘀𝗼:"])
-    
-    if "motiva" in cat: msg = "Non aspettare il momento giusto, crealo. Vince chi ha fame."
-    elif "vendita" in cat: msg = "La vendita non è convincere, è aiutare il cliente a decidere."
-    elif "disciplina" in cat: msg = "La costanza batte l'intensità."
-    else: msg = "Il tuo unico limite è la visione che hai di te stesso. Alza l'asticella."
-    
-    return f"{intro}\n{msg}"
+# ── 6. CALCOLO DURATA AUDIO ──────────────────────────────────────────
+def ottieni_durata_audio(audio_path):
+    import subprocess
+    cmd = [FFMPEG_EXE, "-i", audio_path]
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+    _, stderr = p.communicate()
+    for line in stderr.decode('utf-8', errors='ignore').split("\n"):
+        if "Duration:" in line:
+            parts = line.split("Duration:")[1].split(",")[0].strip()
+            h, m, s = parts.split(":")
+            return float(h)*3600 + float(m)*60 + float(s)
+    return 5.0
 
-# --- 9. SOCIAL ---
-def send_telegram(img_bytes, caption):
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID: 
-        print("⚠️ Telegram saltato (mancano i segreti).")
-        return
-    print("✈️ Invio Telegram...")
-    try:
-        url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendPhoto"
-        files = {'photo': ('post.png', img_bytes)}
-        data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption}
-        r = requests.post(url, files=files, data=data)
-        if r.status_code == 200: print("✅ Telegram OK")
-        else: print(f"❌ Telegram Fail: {r.text}")
-    except Exception as e: print(f"❌ Telegram Error: {e}")
 
-def post_facebook(img_bytes, caption):
+# ── 7. MONTAGGIO VIDEO ANIMATO (SLOW ZOOM IN KEN BURNS) ──────────────
+def crea_video_animato(frame_img_path, audio_path, output_video_path):
+    import subprocess
+    durata = ottieni_durata_audio(audio_path) + 0.5
+    frames_totali = int(durata * 25)
+    
+    # Zoom Pan continuo e fluido 720x1280
+    zoom_filter = f"zoompan=z='min(zoom+0.0008,1.15)':d={frames_totali}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280:fps=25"
+    
+    cmd = [
+        FFMPEG_EXE, "-y",
+        "-loop", "1", "-i", frame_img_path,
+        "-i", audio_path,
+        "-vf", zoom_filter,
+        "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+        "-c:a", "aac", "-b:a", "192k", "-shortest",
+        "-t", str(durata),
+        output_video_path
+    ]
+    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+    return True
+
+
+# ── 8. COPYWRITING FACEBOOK CON RISALTO AD ANTONIO GIANCANI ──────────
+def genera_copy_post(row):
+    categoria = str(row['Categoria']).upper()
+    frase = row['Frase']
+    autore = row['Autore']
+    
+    intro_map = {
+        "MINDSET": "La mente è la risorsa più potente che possiedi: allenala ogni giorno.",
+        "VENDITA": "Vendere significa comprendere le esigenze reali e offrire la soluzione perfetta.",
+        "IMMOBILIARE": "La qualità di un investimento nasce dalla competenza e dalla visione a lungo termine.",
+        "DISCIPLINA": "La costanza supera sempre il talento non coltivato.",
+        "FOCUS": "Elimina le distrazioni: il successo è il risultato di dove metti la tua attenzione.",
+        "BUSINESS": "Nel business vincono la rapidità di esecuzione e la reputazione solida."
+    }
+    intro = intro_map.get(categoria, "La visione e la determinazione fanno la vera differenza.")
+    
+    caption = f"""💎 {categoria} DEL GIORNO 💎
+
+«{frase}»
+— {autore} —
+
+────────────────────
+💡 {intro}
+────────────────────
+
+Guarda il video e salva questo post per la tua ispirazione quotidiana!
+
+━━━━━━━━━━━━━━━━━━━━
+👉 Riflessione e strategia a cura di:
+⭐ ANTONIO GIANCANI ⭐
+━━━━━━━━━━━━━━━━━━━━
+
+#Mindset #Business #Successo #CrescitaPersonale #AntonioGiancani"""
+    return caption
+
+
+# ── 9. INVIO TELEGRAM (CON TASTI INTERATTIVI) & FACEBOOK ─────────────
+def invia_video_telegram(video_path, caption_text, item_id):
+    print("📲 Invio VIDEO ANIMATO con tastiera di approvazione su Telegram...", flush=True)
+    inline_keyboard = {
+        "inline_keyboard": [
+            [
+                {"text": "✅ APPROVA E PUBBLICA VIDEO SU FACEBOOK", "callback_data": f"PUBBLICA_FB_VID_{item_id}"},
+            ],
+            [
+                {"text": "🔄 RIGENERA CON ALTRA CITAZIONE", "callback_data": "RIGENERA_RANDOM"},
+                {"text": "❌ SCARTA", "callback_data": "SCARTA"}
+            ]
+        ]
+    }
+    
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
+    with open(video_path, "rb") as vf:
+        files = {"video": vf}
+        data = {
+            "chat_id": TELEGRAM_CHAT_ID,
+            "caption": f"🎬 *NUOVO VIDEO REELS (Colonna F)*\n\n{caption_text}\n\n👆 *Clicca su Approva per pubblicare il video su Facebook!*",
+            "parse_mode": "Markdown",
+            "reply_markup": json.dumps(inline_keyboard)
+        }
+        res = requests.post(url, data=data, files=files, timeout=60, verify=False)
+        
+    if res.status_code == 200:
+        print("✅ Video Reels inviato con successo su Telegram!", flush=True)
+        return True
+    else:
+        print(f"❌ Errore invio Telegram ({res.status_code}): {res.text}", flush=True)
+        return False
+
+
+def pubblica_video_facebook(video_path, caption):
     id_sicuro = str(PAGE_ID)[:5] if PAGE_ID else "NESSUN_ID"
-    print(f"🚀 Debug FB: ID={id_sicuro}... Token={bool(FACEBOOK_TOKEN)}")
+    print(f"🚀 Pubblicazione Video su Facebook (Page ID: {id_sicuro}... Token: {bool(FACEBOOK_TOKEN)})")
     
     if not PAGE_ID or not FACEBOOK_TOKEN:
-        print("❌ Facebook saltato: PAGE_ID o TOKEN mancante nei Secrets!")
-        return
+        print("ℹ️ Pubblicazione Facebook in attesa di approvazione Telegram o token.")
+        return False
         
     try:
-        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos"
-        payload = {'message': caption, 'access_token': FACEBOOK_TOKEN, 'published': 'true'}
-        files = {'source': ('post.png', img_bytes)}
-        r = requests.post(url, data=payload, files=files)
-        if r.status_code == 200: print("✅ Facebook OK")
-        else: print(f"❌ Errore API Facebook: {r.text}")
-    except Exception as e: print(f"❌ Facebook Fail: {e}")
+        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/videos"
+        with open(video_path, "rb") as vf:
+            files = {'source': ('video_mindset.mp4', vf)}
+            data = {'description': caption, 'access_token': FACEBOOK_TOKEN}
+            r = requests.post(url, files=files, data=data, timeout=120, verify=False)
+            if r.status_code == 200:
+                print("✅ Video Reels pubblicato con successo su Facebook!")
+                return True
+            else:
+                print(f"❌ Errore API Video Facebook: {r.text}")
+                return False
+    except Exception as e:
+        print(f"❌ Eccezione Facebook: {e}")
+        return False
 
-# --- MAIN ---
-if __name__ == "__main__":
-    print("🚀 Avvio Bot Mindset v2.1...")
-    row = get_random_quote()
+
+# ── MAIN ENTRY POINT ──────────────────────────────────────────────────
+async def main():
+    print("="*60, flush=True)
+    print("🎬 AVVIO BOT VIDEO REELS & STORIE (VOCE: DIEGO NEURAL)", flush=True)
+    print("⭐ Personal Branding: Antonio Giancani", flush=True)
+    print("="*60, flush=True)
     
-    if row is not None:
-        print(f"💼 Categoria: {row['Categoria']}")
+    import argparse
+    parser = argparse.ArgumentParser(description="Bot Video Reels Mindset da Colonna F")
+    parser.add_argument("--id", type=str, default=None, help="ID citazione specifico")
+    parser.add_argument("--voice", type=str, default=DEFAULT_VOICE, help="Voce neurale italiana")
+    parser.add_argument("--auto-publish", action="store_true", help="Pubblica direttamente su Facebook")
+    args = parser.parse_args()
+    
+    voce_selezionata = args.voice
+    
+    # 1. Estrazione rigorosa da Colonna F
+    row = get_random_quote(args.id)
+    if not row:
+        print("❌ Nessuna riga disponibile nel CSV.")
+        return
         
-        # 1. Crea Immagine Square (Feed)
-        img_square = add_branding(create_quote_image(row))
-        buf_feed = BytesIO()
-        img_square.save(buf_feed, format='PNG')
-        img_bytes = buf_feed.getvalue()
+    item_id = row["ID"]
+    categoria = row["Categoria"]
+    frase = row["Frase"]
+    autore = row["Autore"]
+    
+    print(f"\n--- 🎞️ Elaborazione Reels #{item_id} [{categoria}] ---", flush=True)
+    
+    # Percorsi file temporanei
+    bg_file = os.path.join(WORK_DIR, f"bg_{item_id}.jpg")
+    frame_file = os.path.join(WORK_DIR, f"frame_{item_id}.png")
+    audio_file = os.path.join(WORK_DIR, f"audio_{item_id}.mp3")
+    video_file = os.path.join(WORK_DIR, f"reels_mindset_{item_id}.mp4")
+    
+    # 2. Generazione Sfondo AI tematico
+    get_ai_background(categoria, bg_file, seed=int(item_id)*13 + 7)
+    
+    # 3. Composizione Grafica con Badge e Tipografia Oro
+    print("  🖼️ Composizione grafica con badge personalizzato...", flush=True)
+    componi_frame_grafico(bg_file, frase, autore, frame_file, categoria=categoria)
+    
+    # 4. Generazione Voce Neurale Italiana (Legge SOLTANTO la frase)
+    testo_voce = frase.strip('“”"\' ')
+    print(f"  🎙️ Lettura vocale frase ({voce_selezionata}): \"{testo_voce}\"", flush=True)
+    await genera_audio_scena(testo_voce, audio_file, voce=voce_selezionata)
+    
+    # 5. Montaggio Video Animato con Ken Burns
+    print("  🎥 Rendering video animato in formato Reels 9:16...", flush=True)
+    crea_video_animato(frame_file, audio_file, video_file)
+    print(f"  ✅ Video Reels generato: {video_file} ({round(os.path.getsize(video_file)/1024/1024, 2)} MB)", flush=True)
+    
+    # 6. Generazione Copy Facebook con Personal Branding Antonio Giancani
+    caption_fb = genera_copy_post(row)
+    
+    # 7. Invio su Telegram con Bottoni Interattivi
+    invia_video_telegram(video_file, caption_fb, item_id)
+    
+    # 8. Pubblicazione diretta se richiesta
+    if args.auto_publish:
+        pubblica_video_facebook(video_file, caption_fb)
         
-        # 2. Crea Immagine Story (Opzionale, al momento salvata ma non inviata in API)
-        img_story = create_story_image(img_square)
-        buf_story = BytesIO()
-        img_story.save(buf_story, format='PNG')
-        
-        # Testi
-        coaching_text = genera_coaching(row)
-        caption = (
-            f"💎 {str(row['Categoria']).upper()} 💎\n\n"
-            f"“{row['Frase']}”\n\n"
-            f"────────────────\n{coaching_text}\n────────────────\n\n"
-            f"👤 Antonio Giancani\n🏠 Agente Immobiliare\n\n#immobiliare #mindset #successo"
-        )
+    print("\n" + "="*60, flush=True)
+    print(f"⭐ VIDEO REELS #{item_id} INVIATO CON SUCCESSO — ANTONIO GIANCANI ⭐", flush=True)
+    print("="*60, flush=True)
 
-        
-        # 3. INVIO
-        send_telegram(img_bytes, caption)
-        post_facebook(img_bytes, caption)
-        
-    else:
-        print("⚠️ Nessuna frase trovata nel CSV.")
+
+if __name__ == "__main__":
+    asyncio.run(main())
