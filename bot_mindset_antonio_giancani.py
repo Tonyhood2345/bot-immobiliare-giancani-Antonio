@@ -32,10 +32,10 @@ import urllib3
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # --- CONFIGURAZIONE ---
-PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "234931856561526")
-FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN", "")
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M")
-TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID", "1723292483")
+PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID") or "234931856561526"
+FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN") or ""
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M"
+TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID") or "1723292483"
 
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Mindset.csv")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faccia.png")
@@ -60,18 +60,31 @@ def get_random_quote(id_richiesto=None):
         with open(CSV_FILE, "r", encoding="utf-8") as f:
             reader = csv.reader(f)
             header = next(reader, None)
-            for r in reader:
+            for idx, r in enumerate(reader, start=1):
+                if not r or len(r) < 2:
+                    continue
                 if len(r) >= 6:
                     rows.append({
-                        "ID": r[0],
-                        "Categoria": r[1],
-                        "Frase": r[2],
-                        "Autore": r[3],
-                        "Stato": r[4],
-                        "Colonna_F": r[5] # TESTO RIGOROSAMENTE PRELEVATO DALLA COLONNA F
+                        "ID": str(r[0]),
+                        "Categoria": str(r[1]).strip(),
+                        "Frase": str(r[2]).strip(),
+                        "Autore": str(r[3]).strip(),
+                        "Stato": str(r[4]).strip(),
+                        "Colonna_F": str(r[5]).strip() # TESTO PRELEVATO DALLA COLONNA F
+                    })
+                elif len(r) >= 3:
+                    # Formato standard 3 colonne: Categoria, Frase, Autore
+                    rows.append({
+                        "ID": str(idx),
+                        "Categoria": str(r[0]).strip(),
+                        "Frase": str(r[1]).strip(),
+                        "Autore": str(r[2]).strip(),
+                        "Stato": "Disponibile",
+                        "Colonna_F": f"{str(r[1]).strip()} — {str(r[2]).strip()}" # Equivalente Colonna F
                     })
                     
         if not rows:
+            print("⚠️ Nessuna riga valida trovata nel CSV!")
             return None
             
         if id_richiesto is not None:
