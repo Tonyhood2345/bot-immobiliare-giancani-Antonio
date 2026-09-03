@@ -2,15 +2,15 @@
 # -*- coding: utf-8 -*-
 """
 ======================================================================
-  🎬 BOT VIDEO REELS & STORIE GIORNALIERO (MINDSET & CITAZIONI)
-  Autore & Regia: Antonio Giancani
+  🎬 BOT VIDEO REELS & STORIE CON VOCE ED EFFETTI DINAMICI
+  Autore: Antonio Giancani
   - Estrazione: Rigorosamente da Colonna F (Mindset.csv)
-  - Voce Narrante: it-IT-DiegoNeural (Legge SOLTANTO la frase)
-  - Layout Video: 9:16 Verticale (720x1280) per Reels & Storie Facebook
-  - Badge Firma: faccia.png con bordo oro circolare
-  - Animazione: FFmpeg Slow Zoom cinematografico
+  - Voce Narrante: Italiano Neurale (Edge-TTS / gTTS)
+  - Grafica: 1080x1920 (9:16 Verticale Reels/Stories)
+  - Badge Logo: faccia.png (Avatar circolare con bordo oro)
+  - Animazione: FFmpeg Ken Burns Effect (Zoom & Pan cinematografico)
   - Personal Branding: Esclusivo su Antonio Giancani (senza menzione agenzia)
-  - Controllo: Invio su Telegram con tasti interattivi di approvazione
+  - Invio & Approvazione: Telegram con bottoni interattivi + Facebook Video Graph API
 ======================================================================
 """
 
@@ -31,28 +31,25 @@ import urllib3
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# ── CONFIGURAZIONE E CREDENZIALI ────────────────────────────────────
+# --- CONFIGURAZIONE ---
 PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID", "234931856561526")
 FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN", "")
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M")
 TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID", "1723292483")
 
-# Voce Neurale Predefinita (Diego: calda, autorevole, profonda)
-DEFAULT_VOICE = "it-IT-DiegoNeural"
-
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Mindset.csv")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faccia.png")
 FONT_NAME = "arial.ttf"
 
-# Percorso eseguibile FFmpeg
+# Percorso FFmpeg
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 
-# Cartella di rendering temporanea
+# Cartella temporanea di montaggio video
 WORK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_reels_output")
 os.makedirs(WORK_DIR, exist_ok=True)
 
 
-# ── 1. GESTIONE DATI (RIGOROSAMENTE DA COLONNA F) ───────────────────
+# --- 1. ESTRAZIONE RIGOROSA DA COLONNA F ---
 def get_random_quote(id_richiesto=None):
     try:
         if not os.path.exists(CSV_FILE):
@@ -71,7 +68,7 @@ def get_random_quote(id_richiesto=None):
                         "Frase": r[2],
                         "Autore": r[3],
                         "Stato": r[4],
-                        "Colonna_F": r[5] # TESTO PRELEVATO DALLA COLONNA F
+                        "Colonna_F": r[5] # TESTO RIGOROSAMENTE PRELEVATO DALLA COLONNA F
                     })
                     
         if not rows:
@@ -90,8 +87,8 @@ def get_random_quote(id_richiesto=None):
         return None
 
 
-# ── 2. SINTESI VOCALE NEURALE (LEGGE SOLTANTO LA FRASE) ─────────────
-async def genera_audio_scena(testo, output_path, voce=DEFAULT_VOICE):
+# --- 2. SINTESI VOCALE NEURALE ITALIANA CON FALLBACK ---
+async def genera_audio_scena(testo, output_path, voce="it-IT-DiegoNeural"):
     success = False
     try:
         import edge_tts
@@ -106,10 +103,10 @@ async def genera_audio_scena(testo, output_path, voce=DEFAULT_VOICE):
         from gtts import gTTS
         tts = gTTS(text=testo, lang='it', slow=False)
         tts.save(output_path)
-    print(f"  🎙️ Traccia vocale (Diego): {output_path} ({round(os.path.getsize(output_path)/1024, 1)} KB)", flush=True)
+    print(f"  🎙️ Traccia vocale registrata: {output_path} ({round(os.path.getsize(output_path)/1024, 1)} KB)", flush=True)
 
 
-# ── 3. GENERAZIONE SFONDO AI DINAMICO (9:16 VERTICALE) ──────────────
+# --- 3. GENERAZIONE SFONDO AI DINAMICO 9:16 (720x1280) ---
 def get_ai_background(categoria, output_path, seed=42):
     cat = str(categoria).lower().strip()
     base_style = "cinematic lighting, photorealistic 8k, luxury, success atmosphere, golden hour, high contrast, elegant vertical 9:16 composition"
@@ -145,7 +142,7 @@ def get_ai_background(categoria, output_path, seed=42):
 
     print(f"  🎨 Generazione sfondo AI tematico...", flush=True)
     
-    # 1. Tentativo Pollinations AI
+    # Tentativo Pollinations
     try:
         clean_prompt = urllib.parse.quote(prompt_text)
         url_ai = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=720&height=1280&nologo=true&seed={seed}"
@@ -158,7 +155,7 @@ def get_ai_background(categoria, output_path, seed=42):
     except Exception as e:
         print(f"  ⚠️ Timeout AI: {e}. Uso fallback HD...")
 
-    # 2. Fallback Stock Sicuro Picsum
+    # Fallback Picsum
     try:
         url_stock = f"https://picsum.photos/seed/{seed}/720/1280?grayscale&blur=2"
         res_stock = requests.get(url_stock, timeout=15, verify=False)
@@ -170,13 +167,13 @@ def get_ai_background(categoria, output_path, seed=42):
     except Exception:
         pass
 
-    # 3. Sfondo scuro di emergenza
+    # Sfondo scuro di emergenza
     img_dark = Image.new('RGB', (720, 1280), (18, 22, 30))
     img_dark.save(output_path)
     return True
 
 
-# ── 4. CARICAMENTO FONT ──────────────────────────────────────────────
+# --- 4. CARICAMENTO FONT ---
 def load_font(size):
     fonts = [FONT_NAME, "C:\\Windows\\Fonts\\arialbd.ttf", "C:\\Windows\\Fonts\\arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
     for f in fonts:
@@ -187,11 +184,19 @@ def load_font(size):
     return ImageFont.load_default()
 
 
-# ── 5. COMPOSIZIONE GRAFICA CON BADGE E DETTAGLI ORO ─────────────────
+# --- 5. COMPOSIZIONE GRAFICA VERTICALE CON BADGE & TIPOGRAFIA ORO ---
 def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, categoria="MINDSET"):
+    """
+    Sovrappone lo sfondo AI con:
+    - Overlay scuro di contrasto
+    - Box in vetro scuro semitrasparente con bordo dorato
+    - Testo citazione e autore in oro
+    - Badge circolare con foto reale faccia.png
+    - Firma 'Antonio Giancani - CONSULENZA & STRATEGIA'
+    """
     base = Image.open(bg_path).convert("RGBA").resize((720, 1280))
     
-    # Overlay scuro di contrasto
+    # Overlay scuro generale
     overlay_dark = Image.new('RGBA', base.size, (0, 0, 0, 110))
     base = Image.alpha_composite(base, overlay_dark)
     
@@ -199,11 +204,11 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     draw = ImageDraw.Draw(overlay_ui)
     W, H = base.size
     
-    # Categoria in alto
+    # Header Superiore
     font_cat = load_font(28)
     draw.text((W//2, 80), f"◆ {categoria.upper()} ◆", font=font_cat, fill="#FFD700", anchor="mt")
     
-    # Formattazione e grandezza testo citazione
+    # Testo Citazione
     testo_pulito = str(testo_principale).strip()
     if len(testo_pulito) > 110:
         font_size = 38
@@ -227,7 +232,7 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     start_y = ((H - total_text_h) // 2) - 40
     padding = 35
     
-    # Box centrale in vetro scuro con profilo dorato
+    # Box centrale con bordo oro
     box_rect = [(35, start_y - padding), (W - 35, start_y + total_text_h + padding)]
     draw.rounded_rectangle(box_rect, radius=20, fill=(12, 16, 24, 205), outline="#FFD700", width=2)
     
@@ -240,7 +245,7 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     # Scrittura autore
     draw.text((W//2, curr_y + 15), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
     
-    # Badge circolare in basso
+    # Inserimento Badge Faccia in basso
     logo_size = 90
     if os.path.exists(LOGO_PATH):
         try:
@@ -256,7 +261,7 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
         face_x = 45
         face_y = H - logo_size - 60
 
-    # Personal Branding in basso a sinistra
+    # Testo Branding Personale
     font_name = load_font(34)
     font_sub = load_font(20)
     text_x = face_x + logo_size + 18
@@ -269,7 +274,7 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     return True
 
 
-# ── 6. CALCOLO DURATA AUDIO ──────────────────────────────────────────
+# --- 6. CALCOLO DURATA AUDIO ---
 def ottieni_durata_audio(audio_path):
     import subprocess
     cmd = [FFMPEG_EXE, "-i", audio_path]
@@ -283,13 +288,17 @@ def ottieni_durata_audio(audio_path):
     return 5.0
 
 
-# ── 7. MONTAGGIO VIDEO ANIMATO (SLOW ZOOM IN KEN BURNS) ──────────────
+# --- 7. MONTAGGIO VIDEO DINAMICO CON EFFETTO KEN BURNS (ZOOM & PAN) ---
 def crea_video_animato(frame_img_path, audio_path, output_video_path):
+    """
+    Anima l'immagine tramite FFmpeg con un elegante e continuo Slow Zoom In,
+    sincronizzandola con la traccia vocale.
+    """
     import subprocess
     durata = ottieni_durata_audio(audio_path) + 0.5
     frames_totali = int(durata * 25)
     
-    # Zoom Pan continuo e fluido 720x1280
+    # Filtro Zoom Pan fluido 720x1280 (9:16)
     zoom_filter = f"zoompan=z='min(zoom+0.0008,1.15)':d={frames_totali}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280:fps=25"
     
     cmd = [
@@ -306,7 +315,7 @@ def crea_video_animato(frame_img_path, audio_path, output_video_path):
     return True
 
 
-# ── 8. COPYWRITING FACEBOOK CON RISALTO AD ANTONIO GIANCANI ──────────
+# --- 8. COPYWRITING FACEBOOK CON PERSONAL BRANDING RIGOROSO ---
 def genera_copy_post(row):
     categoria = str(row['Categoria']).upper()
     frase = row['Frase']
@@ -331,7 +340,7 @@ def genera_copy_post(row):
 💡 {intro}
 ────────────────────
 
-Guarda il video e salva questo post per la tua ispirazione quotidiana!
+Guarda il video completo e salva questo post per la tua ispirazione quotidiana!
 
 ━━━━━━━━━━━━━━━━━━━━
 👉 Riflessione e strategia a cura di:
@@ -342,7 +351,7 @@ Guarda il video e salva questo post per la tua ispirazione quotidiana!
     return caption
 
 
-# ── 9. INVIO TELEGRAM (CON TASTI INTERATTIVI) & FACEBOOK ─────────────
+# --- 9. INVIO VIDEO CON TASTIERA DI APPROVAZIONE TELEGRAM ---
 def invia_video_telegram(video_path, caption_text, item_id):
     print("📲 Invio VIDEO ANIMATO con tastiera di approvazione su Telegram...", flush=True)
     inline_keyboard = {
@@ -376,42 +385,142 @@ def invia_video_telegram(video_path, caption_text, item_id):
         return False
 
 
+# --- 10. PUBBLICAZIONE VIDEO SU FACEBOOK GRAPH API CON DIAGNOSI AUTOMATICA ---
+def ottieni_page_token_effettivo(token_base, page_id_target):
+    """Verifica se il token è di pagina o utente; se utente, estrae il token specifico della pagina."""
+    if not token_base:
+        return None
+    try:
+        url_me = f"https://graph.facebook.com/v19.0/me?access_token={token_base}&fields=id,name,category"
+        r_me = requests.get(url_me, timeout=15, verify=False)
+        d_me = r_me.json()
+        
+        if "category" in d_me and (str(d_me.get("id")) == str(page_id_target) or not page_id_target):
+            return token_base # È già un Page Access Token
+            
+        # È un User Token: cerchiamo nelle pagine gestite
+        url_acc = f"https://graph.facebook.com/v19.0/me/accounts?access_token={token_base}&fields=id,name,access_token"
+        r_acc = requests.get(url_acc, timeout=15, verify=False)
+        d_acc = r_acc.json().get("data", [])
+        for p in d_acc:
+            if str(p.get("id")) == str(page_id_target) or not page_id_target:
+                print(f"  🎯 Page Access Token rilevato per la Pagina: {p.get('name')} (ID: {p.get('id')})", flush=True)
+                return p.get("access_token")
+        if d_acc:
+            return d_acc[0].get("access_token")
+    except Exception as e:
+        print(f"  ⚠️ Verifica token preliminare: {e}", flush=True)
+    return token_base
+
+
 def pubblica_video_facebook(video_path, caption):
     id_sicuro = str(PAGE_ID)[:5] if PAGE_ID else "NESSUN_ID"
-    print(f"🚀 Pubblicazione Video su Facebook (Page ID: {id_sicuro}... Token: {bool(FACEBOOK_TOKEN)})")
+    token_attivo = FACEBOOK_TOKEN
+    print(f"🚀 Avvio Pubblicazione Video su Facebook (Page ID: {id_sicuro}... Token Configurato: {bool(token_attivo)})", flush=True)
     
-    if not PAGE_ID or not FACEBOOK_TOKEN:
-        print("ℹ️ Pubblicazione Facebook in attesa di approvazione Telegram o token.")
+    if not PAGE_ID or not token_attivo:
+        msg_err = "⚠️ *Pubblicazione Facebook Saltata:* `FACEBOOK_PAGE_ID` o `FACEBOOK_TOKEN` non impostati nei Secrets di GitHub."
+        print(msg_err, flush=True)
+        invia_notifica_errore_fb(msg_err)
         return False
-        
+
+    # Estrazione o verifica Page Token
+    token_da_usare = ottieni_page_token_effettivo(token_attivo, PAGE_ID)
+    
     try:
         url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/videos"
         with open(video_path, "rb") as vf:
-            files = {'source': ('video_mindset.mp4', vf)}
-            data = {'description': caption, 'access_token': FACEBOOK_TOKEN}
-            r = requests.post(url, files=files, data=data, timeout=120, verify=False)
-            if r.status_code == 200:
-                print("✅ Video Reels pubblicato con successo su Facebook!")
+            files = {'source': ('video_reels_mindset.mp4', vf)}
+            data = {'description': caption, 'access_token': token_da_usare}
+            r = requests.post(url, files=files, data=data, timeout=180, verify=False)
+            res_json = r.json()
+            
+            if r.status_code == 200 and "id" in res_json:
+                vid_id = res_json.get("id")
+                print(f"✅ Video Reels pubblicato con successo su Facebook! (Video ID: {vid_id})", flush=True)
+                # Notifica Telegram di successo
+                invia_notifica_successo_fb(vid_id)
                 return True
             else:
-                print(f"❌ Errore API Video Facebook: {r.text}")
+                err = res_json.get("error", {})
+                err_code = err.get("code", r.status_code)
+                err_sub = err.get("error_subcode", "")
+                err_msg = err.get("message", r.text)
+                
+                # Diagnosi specifica del motivo del fallimento
+                if err_code == 190:
+                    diagnosi = "🔴 *TOKEN SCADUTO O NON VALIDO* (Code 190)\nIl token di accesso Facebook è scaduto oppure è stato revocato."
+                elif err_code == 200:
+                    diagnosi = "🟠 *PERMESSI INSUFFICIENTI* (Code 200)\nIl token non ha i permessi `pages_manage_posts` o `publish_video` sulla Pagina."
+                elif err_code == 100:
+                    diagnosi = "🟡 *PARAMETRO O ID NON VALIDO* (Code 100)\nL'ID Pagina fornito non corrisponde o il formato video non è stato accettato."
+                else:
+                    diagnosi = f"⚠️ *ERRORE GRAPH API* (Code {err_code}, Sub: {err_sub})"
+                    
+                msg_completo = (
+                    f"❌ *MANCATA PUBBLICAZIONE AUTOMATICA SU FACEBOOK*\n\n"
+                    f"{diagnosi}\n\n"
+                    f"📝 *Dettaglio Meta:* _{err_msg}_\n\n"
+                    f"🆔 *Page ID Target:* `{PAGE_ID}`\n\n"
+                    f"💡 *Come Correggere:*\n"
+                    f"1. Apri *Meta Graph API Explorer*\n"
+                    f"2. Seleziona la Pagina *Immobiliare Giancani* in 'User or Page'\n"
+                    f"3. Spunta i permessi: `pages_manage_posts`, `pages_read_engagement`, `publish_video`\n"
+                    f"4. Clicca *Generate Access Token* e aggiorna il Secret `FACEBOOK_TOKEN` su GitHub."
+                )
+                print(f"❌ Errore API Video Facebook: {err_msg}", flush=True)
+                invia_notifica_errore_fb(msg_completo)
                 return False
     except Exception as e:
-        print(f"❌ Eccezione Facebook: {e}")
+        msg_exc = f"❌ *Eccezione durante la connessione a Facebook Graph API:*\n`{str(e)}`"
+        print(msg_exc, flush=True)
+        invia_notifica_errore_fb(msg_exc)
         return False
 
 
-# ── MAIN ENTRY POINT ──────────────────────────────────────────────────
+def invia_notifica_errore_fb(messaggio_md):
+    """Invia tempestivamente su Telegram il report sul motivo della mancata pubblicazione."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": f"{messaggio_md}\n\n━━━━━━━━━━━━━━━━━━━━\n⭐ *Antonio Giancani* ⭐",
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=15, verify=False)
+    except Exception:
+        pass
+
+
+def invia_notifica_successo_fb(video_id):
+    """Notifica immediata su Telegram quando la pubblicazione automatica va a buon fine."""
+    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": f"🎉 *VIDEO PUBBLICATO CON SUCCESSO SU FACEBOOK!*\n\n📹 *Video ID:* `{video_id}`\n🌐 Il video Reels è ora online sulla Pagina Facebook.\n\n━━━━━━━━━━━━━━━━━━━━\n⭐ *Antonio Giancani* ⭐",
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=15, verify=False)
+    except Exception:
+        pass
+
+
+# --- FLUSSO PRINCIPALE ---
 async def main():
     print("="*60, flush=True)
-    print("🎬 AVVIO BOT VIDEO REELS & STORIE (VOCE: DIEGO NEURAL)", flush=True)
+    print("🎬 AVVIO BOT VIDEO REELS & STORIE CON VOCE ED EFFETTI DINAMICI", flush=True)
     print("⭐ Personal Branding: Antonio Giancani", flush=True)
     print("="*60, flush=True)
     
     import argparse
-    parser = argparse.ArgumentParser(description="Bot Video Reels Mindset da Colonna F")
+    parser = argparse.ArgumentParser(description="Bot Video Reels da Colonna F")
     parser.add_argument("--id", type=str, default=None, help="ID citazione specifico")
-    parser.add_argument("--voice", type=str, default=DEFAULT_VOICE, help="Voce neurale italiana")
+    parser.add_argument("--voice", type=str, default="it-IT-DiegoNeural", help="Voce neurale italiana (es. it-IT-DiegoNeural, it-IT-GiuseppeNeural, it-IT-ElsaNeural)")
     parser.add_argument("--auto-publish", action="store_true", help="Pubblica direttamente su Facebook")
     args = parser.parse_args()
     
@@ -427,10 +536,11 @@ async def main():
     categoria = row["Categoria"]
     frase = row["Frase"]
     autore = row["Autore"]
+    testo_colonna_f = row["Colonna_F"]
     
     print(f"\n--- 🎞️ Elaborazione Reels #{item_id} [{categoria}] ---", flush=True)
     
-    # Percorsi file temporanei
+    # File di output
     bg_file = os.path.join(WORK_DIR, f"bg_{item_id}.jpg")
     frame_file = os.path.join(WORK_DIR, f"frame_{item_id}.png")
     audio_file = os.path.join(WORK_DIR, f"audio_{item_id}.mp3")
