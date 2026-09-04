@@ -105,7 +105,109 @@ def get_random_quote(id_richiesto=None):
         return None
 
 
-# --- 2. SINTESI VOCALE NEURALE ITALIANA CON FALLBACK ---
+# --- 2. GENERAZIONE MICRO-STORIA NARRATA (STORYTELLING SINCRONIZZATO) ---
+def genera_micro_storia(categoria, frase, autore):
+    """
+    Genera una micro-storia o parabola di circa 28-35 parole (10-14 secondi di narrazione a voce)
+    che racconta una situazione concreta mentre sullo schermo appare la citazione.
+    """
+    cat_pulita = str(categoria).upper().strip()
+    frase_pulita = str(frase).strip('“”"\' ')
+    autore_pulito = str(autore).strip()
+    
+    # 1. Tentativo con Groq API (Ultra-veloce e gratuito)
+    groq_key = os.environ.get("GROQ_API_KEY")
+    if groq_key:
+        try:
+            headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "qwen/qwen3.8-27b",
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": (
+                            "Sei la voce narrante di Antonio Giancani per un Reels Instagram/Facebook. "
+                            "Sullo schermo l'utente legge una citazione. Tu devi raccontare a voce una micro-storia "
+                            "o parabola concreta di massimo 30-35 parole (circa 11-13 secondi di audio) "
+                            "che illustri il significato pratico di quel pensiero. "
+                            "Sii diretto, profondo ed emotivo. Non ripetere la citazione parola per parola tra virgolette, "
+                            "racconta direttamente la storia in un perfetto italiano fluido."
+                        )
+                    },
+                    {
+                        "role": "user",
+                        "content": f"Citazione: \"{frase_pulita}\". Autore: {autore_pulito}. Categoria: {cat_pulita}."
+                    }
+                ],
+                "max_tokens": 100,
+                "temperature": 0.7
+            }
+            r = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, verify=False, timeout=8)
+            if r.status_code == 200:
+                testo = r.json()["choices"][0]["message"]["content"].strip().strip('"')
+                if len(testo.split()) >= 15:
+                    print("  ✨ Micro-storia creata con AI Groq!", flush=True)
+                    return testo
+        except Exception as e:
+            print(f"  ⚠️ Groq fallback: {e}")
+
+    # 2. Tentativo con Google Gemini API
+    gemini_key = os.environ.get("GOOGLE_API_KEY")
+    if gemini_key:
+        try:
+            url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
+            prompt_g = (
+                f"Scrivi una brevissima micro-storia in italiano di massimo 30 parole che dia vita a questo principio: "
+                f"\"{frase_pulita}\" ({autore_pulito}). Non ripetere la citazione, racconta solo la micro-storia per un video Reels."
+            )
+            payload_g = {"contents": [{"parts": [{"text": prompt_g}]}]}
+            r_g = requests.post(url_gemini, json=payload_g, timeout=8, verify=False)
+            if r_g.status_code == 200:
+                cand = r_g.json().get("candidates", [])[0]["content"]["parts"][0]["text"].strip().strip('"')
+                if len(cand.split()) >= 15:
+                    print("  ✨ Micro-storia creata con Gemini AI!", flush=True)
+                    return cand
+        except Exception:
+            pass
+
+    # 3. Fallback Narrativo Locale Intelligente (100% offline)
+    storie_locali = {
+        "IMMOBILIARE": [
+            "Mentre molti spendono in beni che perdono valore domani, chi sceglie il mattone costruisce una fortezza silenziosa che protegge la famiglia e fa crescere il patrimonio negli anni.",
+            "Nel 1980 un uomo scelse una casa invece di spese effimere. Quarant'anni dopo, quel solo immobile ha finanziato gli studi dei figli e garantito serenità a tutta la sua famiglia.",
+            "La vera sicurezza non è accumulare cifre su uno schermo, ma possedere qualcosa di concreto sotto i tuoi piedi, capace di superare ogni tempesta economica."
+        ],
+        "MINDSET": [
+            "Due persone guardano la stessa collina: una vede una salita faticosa, l'altra vede il panorama che conquisterà dall'alto. La realtà non cambia, cambia solo la tua mente.",
+            "Quando decidi che nulla può fermarti, gli ostacoli smettono di essere muri e diventano semplicemente i gradini su cui salire per raggiungere la tua vera visione.",
+            "La mente è come una terra fertile: se non semini intenzionalmente pensieri di grandezza e fiducia, le erbacce del dubbio cresceranno da sole."
+        ],
+        "VENDITA": [
+            "Un consulente cercava di vendere a tutti i costi e riceveva solo rifiuti. Quando ha iniziato ad ascoltare davvero i bisogni del cliente, non ha più dovuto vendere nulla: hanno comprato loro.",
+            "Non si tratta di convincere nessuno con le parole, ma di mostrare con i fatti che hai a cuore il futuro e il benessere di chi hai davanti.",
+            "La fiducia non si compra con le promesse: si guadagna con la trasparenza e con la capacità di mantenere sempre la parola data."
+        ],
+        "DISCIPLINA": [
+            "Ogni mattina lo scultore colpisce il marmo. Per mesi sembra non cambiare nulla, finché un giorno l'opera d'arte emerge. La grandezza è solo costanza invisibile.",
+            "Nei giorni in cui manca l'entusiasmo, è la disciplina a prendere il timone. Chi vince non è chi ha sempre voglia, ma chi non si ferma mai.",
+            "Non cercare scorciatoie miracolose. La vera magia accade quando ripeti i piccoli gesti giusti ogni singolo giorno, senza cedere alle distrazioni."
+        ],
+        "FOCUS": [
+            "I raggi del sole scaldano la terra, ma solo quando una lente li concentra in un unico punto scocca la scintilla. Il tuo successo dipende da quanto sai essere focalizzato.",
+            "Elimina il rumore di fondo. Chi cerca di fare tutto contemporaneamente finisce per non concludere nulla. Scegli la tua priorità e dedicale tutta la tua forza.",
+            "Dire di no a cento cose secondarie è l'unico modo per dire un sì straordinario al tuo obiettivo più grande."
+        ],
+        "BUSINESS": [
+            "Due imprenditori avevano la stessa idea: uno ha aspettato il momento perfetto, l'altro ha iniziato subito e ha corretto la rotta strada facendo. Oggi il secondo guida il mercato.",
+            "Nel mondo degli affari la velocità di esecuzione batte la perfezione teorica. Decidi con lucidità, agisci con determinazione e crea valore concreto.",
+            "La reputazione richiede vent'anni per essere costruita e cinque minuti per essere rovinata. Fai sempre ciò che è giusto, anche quando nessuno ti guarda."
+        ]
+    }
+    opzioni = storie_locali.get(cat_pulita, storie_locali["MINDSET"])
+    return random.choice(opzioni)
+
+
+# --- 3. SINTESI VOCALE NEURALE ITALIANA CON FALLBACK ---
 async def genera_audio_scena(testo, output_path, voce="it-IT-DiegoNeural"):
     success = False
     try:
@@ -392,7 +494,7 @@ def crea_video_animato(frame_img_path, audio_path, output_video_path, bg_music_p
 
 
 # --- 9. COPYWRITING FACEBOOK AD ALTO INGAGGIO (EMOJI, SPUNTI, HASHTAG) ---
-def genera_copy_post(row):
+def genera_copy_post(row, storia=None):
     categoria = str(row['Categoria']).upper()
     frase = row['Frase']
     autore = row['Autore']
@@ -436,11 +538,13 @@ def genera_copy_post(row):
         "Metti energia, dedizione e professionalità in tutto ciò che fai."
     ))
     
+    sezione_storia = f"\n🎙️ *LA STORIA NEL VIDEO:*\n_{storia}_\n" if storia else ""
+    
     caption = f"""💎 {categoria} DEL GIORNO 💎
 
 «{frase}»
 — {autore} —
-
+{sezione_storia}
 ────────────────────────
 {titolo_box}
 ────────────────────────
@@ -686,10 +790,10 @@ async def main():
     print("  🖼️ Composizione grafica con badge personalizzato...", flush=True)
     componi_frame_grafico(bg_file, frase, autore, frame_file, categoria=categoria)
     
-    # 4. Generazione Voce Neurale Italiana (Legge SOLTANTO la frase)
-    testo_voce = frase.strip('“”"\' ')
-    print(f"  🎙️ Lettura vocale frase ({voce_selezionata}): \"{testo_voce}\"", flush=True)
-    await genera_audio_scena(testo_voce, audio_file, voce=voce_selezionata)
+    # 4. Generazione Micro-Storia Narrata Sincronizzata (Diego racconta una storia mentre sullo schermo si legge la frase)
+    storia_vocale = genera_micro_storia(categoria, frase, autore)
+    print(f"  🎙️ Narrazione Storytelling ({voce_selezionata}): \"{storia_vocale}\"", flush=True)
+    await genera_audio_scena(storia_vocale, audio_file, voce=voce_selezionata)
     
     # 5. Selezione Musica di Sottofondo (CC0 No-Copyright) & Montaggio Video Animato
     musica_bg = scegli_musica_sottofondo(categoria)
@@ -698,7 +802,7 @@ async def main():
     print(f"  ✅ Video Reels generato: {video_file} ({round(os.path.getsize(video_file)/1024/1024, 2)} MB)", flush=True)
     
     # 6. Generazione Copy Facebook con Personal Branding Antonio Giancani
-    caption_fb = genera_copy_post(row)
+    caption_fb = genera_copy_post(row, storia=storia_vocale)
     
     # 7. Invio su Telegram con Bottoni Interattivi
     invia_video_telegram(video_file, caption_fb, item_id)
