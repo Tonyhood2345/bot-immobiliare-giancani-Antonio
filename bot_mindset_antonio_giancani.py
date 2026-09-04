@@ -39,7 +39,11 @@ TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID") or "1723292483"
 
 CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Mindset.csv")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faccia.png")
+MUSIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "musica_sottofondo")
 FONT_NAME = "arial.ttf"
+
+# Voce predefinita: Diego Neural
+DEFAULT_VOICE = "it-IT-DiegoNeural"
 
 # Percorso FFmpeg
 FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
@@ -47,6 +51,7 @@ FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 # Cartella temporanea di montaggio video
 WORK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_reels_output")
 os.makedirs(WORK_DIR, exist_ok=True)
+os.makedirs(MUSIC_DIR, exist_ok=True)
 
 
 # --- 1. ESTRAZIONE RIGOROSA DA COLONNA F ---
@@ -221,33 +226,34 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     font_cat = load_font(28)
     draw.text((W//2, 80), f"◆ {categoria.upper()} ◆", font=font_cat, fill="#FFD700", anchor="mt")
     
-    # Testo Citazione
+    # Testo Citazione (Layout Più Stretto ed Elegante)
     testo_pulito = str(testo_principale).strip()
     if len(testo_pulito) > 110:
-        font_size = 38
-        line_height = 50
-        wrap_w = 26
+        font_size = 33
+        line_height = 44
+        wrap_w = 21
     elif len(testo_pulito) > 60:
-        font_size = 44
-        line_height = 58
-        wrap_w = 22
-    else:
-        font_size = 50
-        line_height = 66
+        font_size = 39
+        line_height = 50
         wrap_w = 18
+    else:
+        font_size = 45
+        line_height = 58
+        wrap_w = 15
         
     font_quote = load_font(font_size)
-    font_author = load_font(32)
+    font_author = load_font(28)
     
     lines = textwrap.wrap(f"“{testo_pulito}”", width=wrap_w)
-    total_text_h = len(lines) * line_height + 60
+    total_text_h = len(lines) * line_height + 55
     
     start_y = ((H - total_text_h) // 2) - 40
-    padding = 35
+    padding = 32
     
-    # Box centrale con bordo oro
-    box_rect = [(35, start_y - padding), (W - 35, start_y + total_text_h + padding)]
-    draw.rounded_rectangle(box_rect, radius=20, fill=(12, 16, 24, 205), outline="#FFD700", width=2)
+    # Box centrale con bordo oro - Più Stretto Lateralmente (Margini 70px)
+    box_margin_x = 70
+    box_rect = [(box_margin_x, start_y - padding), (W - box_margin_x, start_y + total_text_h + padding)]
+    draw.rounded_rectangle(box_rect, radius=18, fill=(12, 16, 24, 210), outline="#FFD700", width=2)
     
     # Scrittura testo
     curr_y = start_y
@@ -256,7 +262,7 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
         curr_y += line_height
         
     # Scrittura autore
-    draw.text((W//2, curr_y + 15), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
+    draw.text((W//2, curr_y + 12), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
     
     # Inserimento Badge Faccia in basso
     logo_size = 90
@@ -287,7 +293,42 @@ def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, 
     return True
 
 
-# --- 6. CALCOLO DURATA AUDIO ---
+# --- 6. GESTIONE MUSICA DI SOTTOFONDO (CC0 NO COPYRIGHT SEMPRE DIVERSA) ---
+def scegli_musica_sottofondo(categoria="MINDSET"):
+    """Seleziona casualmente una traccia musicale CC0 Public Domain sempre diversa."""
+    if not os.path.exists(MUSIC_DIR):
+        os.makedirs(MUSIC_DIR, exist_ok=True)
+        
+    tracce = [os.path.join(MUSIC_DIR, f) for f in os.listdir(MUSIC_DIR) if f.endswith('.mp3') and os.path.getsize(os.path.join(MUSIC_DIR, f)) > 1000]
+    
+    # Se non sono presenti tracce locali, scarica fallback CC0 istantaneo
+    if not tracce:
+        print("  🎵 Download traccia musicale CC0 no-copyright di supporto...", flush=True)
+        fallback_urls = [
+            ("ambient_calma.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Ambient_HIGH_11.mp3"),
+            ("pianoforte_classico.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Classical_HIGH_01.mp3"),
+            ("cinematic_ispirazione.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Film_HIGH_15.mp3"),
+            ("jazz_business.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Jazz_HIGH_08.mp3")
+        ]
+        for name, url in fallback_urls:
+            try:
+                dest = os.path.join(MUSIC_DIR, name)
+                r = requests.get(url, timeout=15, verify=False)
+                if r.status_code == 200 and len(r.content) > 1000:
+                    with open(dest, 'wb') as f:
+                        f.write(r.content)
+                    tracce.append(dest)
+            except Exception:
+                pass
+
+    if tracce:
+        scelta = random.choice(tracce)
+        print(f"  🎶 Sottofondo musicale selezionato (Royalty Free): {os.path.basename(scelta)}", flush=True)
+        return scelta
+    return None
+
+
+# --- 7. CALCOLO DURATA AUDIO ---
 def ottieni_durata_audio(audio_path):
     import subprocess
     cmd = [FFMPEG_EXE, "-i", audio_path]
@@ -301,66 +342,125 @@ def ottieni_durata_audio(audio_path):
     return 5.0
 
 
-# --- 7. MONTAGGIO VIDEO DINAMICO CON EFFETTO KEN BURNS (ZOOM & PAN) ---
-def crea_video_animato(frame_img_path, audio_path, output_video_path):
+# --- 8. MONTAGGIO VIDEO CON EFFETTO KEN BURNS E MIX AUDIO SOTTOFONDO ---
+def crea_video_animato(frame_img_path, audio_path, output_video_path, bg_music_path=None):
     """
-    Anima l'immagine tramite FFmpeg con un elegante e continuo Slow Zoom In,
-    sincronizzandola con la traccia vocale.
+    Anima l'immagine con Slow Zoom in formato Reels 9:16 e mixa la voce neurale
+    con un sottofondo musicale elegante a volume bilanciato (14%) con dissolvenza.
     """
     import subprocess
-    durata = ottieni_durata_audio(audio_path) + 0.5
+    durata = ottieni_durata_audio(audio_path) + 0.8
     frames_totali = int(durata * 25)
     
     # Filtro Zoom Pan fluido 720x1280 (9:16)
     zoom_filter = f"zoompan=z='min(zoom+0.0008,1.15)':d={frames_totali}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280:fps=25"
     
-    cmd = [
-        FFMPEG_EXE, "-y",
-        "-loop", "1", "-i", frame_img_path,
-        "-i", audio_path,
-        "-vf", zoom_filter,
-        "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
-        "-c:a", "aac", "-b:a", "192k", "-shortest",
-        "-t", str(durata),
-        output_video_path
-    ]
+    if bg_music_path and os.path.exists(bg_music_path):
+        fade_out_st = max(0.5, durata - 1.2)
+        filter_complex = (
+            f"[1:a]volume=1.0[voice];"
+            f"[2:a]volume=0.14,afade=t=in:ss=0:d=0.8,afade=t=out:st={fade_out_st:.2f}:d=1.2[music];"
+            f"[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout];"
+            f"[0:v]{zoom_filter}[vout]"
+        )
+        cmd = [
+            FFMPEG_EXE, "-y",
+            "-loop", "1", "-i", frame_img_path,
+            "-i", audio_path,
+            "-i", bg_music_path,
+            "-filter_complex", filter_complex,
+            "-map", "[vout]", "-map", "[aout]",
+            "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(durata),
+            output_video_path
+        ]
+    else:
+        cmd = [
+            FFMPEG_EXE, "-y",
+            "-loop", "1", "-i", frame_img_path,
+            "-i", audio_path,
+            "-vf", zoom_filter,
+            "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k", "-shortest",
+            "-t", str(durata),
+            output_video_path
+        ]
+        
     subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
     return True
 
 
-# --- 8. COPYWRITING FACEBOOK CON PERSONAL BRANDING RIGOROSO ---
+# --- 9. COPYWRITING FACEBOOK AD ALTO INGAGGIO (EMOJI, SPUNTI, HASHTAG) ---
 def genera_copy_post(row):
     categoria = str(row['Categoria']).upper()
     frase = row['Frase']
     autore = row['Autore']
     
     intro_map = {
-        "MINDSET": "La mente è la risorsa più potente che possiedi: allenala ogni giorno.",
-        "VENDITA": "Vendere significa comprendere le esigenze reali e offrire la soluzione perfetta.",
-        "IMMOBILIARE": "La qualità di un investimento nasce dalla competenza e dalla visione a lungo termine.",
-        "DISCIPLINA": "La costanza supera sempre il talento non coltivato.",
-        "FOCUS": "Elimina le distrazioni: il successo è il risultato di dove metti la tua attenzione.",
-        "BUSINESS": "Nel business vincono la rapidità di esecuzione e la reputazione solida."
+        "MINDSET": (
+            "🧠 *IL POTERE DELLA MENTE E DELLA VISIONE*",
+            "La differenza tra chi ottiene risultati straordinari e chi si ferma sta nel modo di interpretare le sfide ogni singolo giorno.",
+            "Coltiva abitudini vincenti, allena la tua concentrazione e non permettere al rumore esterno di deviare i tuoi obiettivi."
+        ),
+        "VENDITA": (
+            "💼 *L'ARTE DELLA NEGOZIAZIONE E DEL VALORE*",
+            "Vendere non significa convincere, ma comprendere a fondo le reali esigenze delle persone e offrire la soluzione perfetta con integrità.",
+            "Costruisci relazioni autentiche: la fiducia è la moneta più preziosa nel mercato di oggi."
+        ),
+        "IMMOBILIARE": (
+            "🏛️ *STRATEGIA E VISIONE NEGLI INVESTIMENTI*",
+            "Il valore di una scelta immobiliare non si misura nell'immediato, ma nella capacità di anticipare i trend e creare sicurezza nel tempo.",
+            "Competenza, posizionamento e decisione: questi sono i tre pilastri per chi vuole costruire basi solide."
+        ),
+        "DISCIPLINA": (
+            "⏳ *LA FORZA DELLA COSTANZA QUOTIDIANA*",
+            "La motivazione ti fa partire, ma è solo la disciplina ferrea che ti porta al traguardo.",
+            "Ogni piccolo sforzo ripetuto con perseveranza costruisce il ponte verso i tuoi sogni più grandi."
+        ),
+        "FOCUS": (
+            "🎯 *ELIMINA IL SUPERFLUO, MASSIMIZZA L'IMPATTO*",
+            "In un mondo pieno di distrazioni, la capacità di mantenere l'attenzione sull'essenziale è un autentico superpotere.",
+            "Scegli dove indirizzare la tua energia: i risultati seguiranno la direzione del tuo focus."
+        ),
+        "BUSINESS": (
+            "📈 *ECCELLENZA, VELOCITÀ ED ESECUZIONE*",
+            "Le idee senza azione rimangono illusioni. Nel business vince chi sa decidere con rapidità ed eseguire con precisione millimetrica.",
+            "Punta sempre all'eccellenza e fai parlare la solidità dei tuoi risultati."
+        )
     }
-    intro = intro_map.get(categoria, "La visione e la determinazione fanno la vera differenza.")
+    
+    titolo_box, punto1, punto2 = intro_map.get(categoria, (
+        "✨ *ISPIRAZIONE & STRATEGIA DEL GIORNO*",
+        "Ogni traguardo comincia con la decisione coraggiosa di fare il primo passo e perseverare.",
+        "Metti energia, dedizione e professionalità in tutto ciò che fai."
+    ))
     
     caption = f"""💎 {categoria} DEL GIORNO 💎
 
 «{frase}»
 — {autore} —
 
-────────────────────
-💡 {intro}
-────────────────────
+────────────────────────
+{titolo_box}
+────────────────────────
+🔹 {punto1}
+🔹 {punto2}
 
-Guarda il video completo e salva questo post per la tua ispirazione quotidiana!
+💡 *REGOLE CHIAVE:*
+1️⃣ Azione costante e zero scuse
+2️⃣ Focus sui risultati che contano davvero
+3️⃣ Crescita e perfezionamento continuo
+
+📲 *Guarda il Reels, lascia un mi piace e salva il post* per ritrovarlo ogni volta che hai bisogno della giusta carica!
+💬 Scrivi nei commenti la tua riflessione su questa frase.
 
 ━━━━━━━━━━━━━━━━━━━━
 👉 Riflessione e strategia a cura di:
 ⭐ ANTONIO GIANCANI ⭐
 ━━━━━━━━━━━━━━━━━━━━
 
-#Mindset #Business #Successo #CrescitaPersonale #AntonioGiancani"""
+#Mindset #CrescitaPersonale #Successo #Business #Focus #Disciplina #Leadership #MotivazioneDelGiorno #Strategia #Ispirazione #AntonioGiancani"""
     return caption
 
 
@@ -380,11 +480,31 @@ def invia_video_telegram(video_path, caption_text, item_id):
     }
     
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
+    
+    # Limite Telegram per didascalie video: massimo 1024 caratteri
+    if len(caption_text) > 750:
+        testo_troncato = caption_text[:750].rsplit("\n", 1)[0]
+        caption_telegram = (
+            f"🎬 *NUOVO REELS (Colonna F)*\n\n"
+            f"{testo_troncato}\n\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n"
+            f"👉 Strategia a cura di:\n"
+            f"⭐ *ANTONIO GIANCANI* ⭐\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"👆 *Clicca in basso per approvare e pubblicare!*"
+        )
+    else:
+        caption_telegram = (
+            f"🎬 *NUOVO REELS (Colonna F)*\n\n"
+            f"{caption_text}\n\n"
+            f"👆 *Clicca in basso per approvare e pubblicare!*"
+        )
+
     with open(video_path, "rb") as vf:
         files = {"video": vf}
         data = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "caption": f"🎬 *NUOVO VIDEO REELS (Colonna F)*\n\n{caption_text}\n\n👆 *Clicca su Approva per pubblicare il video su Facebook!*",
+            "caption": caption_telegram,
             "parse_mode": "Markdown",
             "reply_markup": json.dumps(inline_keyboard)
         }
@@ -571,9 +691,10 @@ async def main():
     print(f"  🎙️ Lettura vocale frase ({voce_selezionata}): \"{testo_voce}\"", flush=True)
     await genera_audio_scena(testo_voce, audio_file, voce=voce_selezionata)
     
-    # 5. Montaggio Video Animato con Ken Burns
-    print("  🎥 Rendering video animato in formato Reels 9:16...", flush=True)
-    crea_video_animato(frame_file, audio_file, video_file)
+    # 5. Selezione Musica di Sottofondo (CC0 No-Copyright) & Montaggio Video Animato
+    musica_bg = scegli_musica_sottofondo(categoria)
+    print("  🎥 Rendering video animato in formato Reels 9:16 con mix musicale...", flush=True)
+    crea_video_animato(frame_file, audio_file, video_file, bg_music_path=musica_bg)
     print(f"  ✅ Video Reels generato: {video_file} ({round(os.path.getsize(video_file)/1024/1024, 2)} MB)", flush=True)
     
     # 6. Generazione Copy Facebook con Personal Branding Antonio Giancani
