@@ -715,8 +715,8 @@ def pubblica_video_facebook(video_path, caption):
         return False
 
 
-def invia_notifica_errore_fb(messaggio_md):
-    """Invia tempestivamente su Telegram il report sul motivo della mancata pubblicazione."""
+def invia_notifica_telegram(messaggio_md):
+    """Invia tempestivamente su Telegram un avviso di sistema."""
     if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
         return
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
@@ -731,36 +731,165 @@ def invia_notifica_errore_fb(messaggio_md):
         pass
 
 
+def invia_notifica_errore_fb(messaggio_md):
+    invia_notifica_telegram(messaggio_md)
+
+
 def invia_notifica_successo_fb(video_id):
-    """Notifica immediata su Telegram quando la pubblicazione automatica va a buon fine."""
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
-        return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": f"🎉 *VIDEO PUBBLICATO CON SUCCESSO SU FACEBOOK!*\n\n📹 *Video ID:* `{video_id}`\n🌐 Il video Reels è ora online sulla Pagina Facebook.\n\n━━━━━━━━━━━━━━━━━━━━\n⭐ *Antonio Giancani* ⭐",
-        "parse_mode": "Markdown"
-    }
+    msg = f"🎉 *VIDEO PUBBLICATO CON SUCCESSO SU FACEBOOK!*\n\n📹 *Video ID:* `{video_id}`\n🌐 Il video Reels è ora online sulla Pagina Facebook."
+    invia_notifica_telegram(msg)
+
+
+# --- 11. PUBBLICAZIONE REELS SU INSTAGRAM GRAPH API ---
+def ottieni_instagram_account_id(token, page_id):
+    """Rileva l'ID dell'account Instagram Business o Creator collegato alla Pagina Facebook."""
+    ig_env = os.environ.get("INSTAGRAM_ACCOUNT_ID")
+    if ig_env:
+        return ig_env.strip()
     try:
-        requests.post(url, json=payload, timeout=15, verify=False)
-    except Exception:
-        pass
+        url = f"https://graph.facebook.com/v19.0/{page_id}?fields=instagram_business_account&access_token={token}"
+        r = requests.get(url, timeout=15, verify=False)
+        data = r.json()
+        if "instagram_business_account" in data and data["instagram_business_account"].get("id"):
+            ig_id = data["instagram_business_account"]["id"]
+            print(f"  📸 Account Instagram Business collegato rilevato: ID {ig_id}", flush=True)
+            return ig_id
+    except Exception as e:
+        print(f"  ⚠️ Rilevamento Instagram account: {e}", flush=True)
+    return None
+
+
+def pubblica_reels_instagram(video_path, caption):
+    """Pubblica automaticamente il video come Reels su Instagram tramite la Graph API di Meta (Resumable Upload)."""
+    print("\n🚀 Avvio Pubblicazione Automatica Reels su Instagram...", flush=True)
+    
+    token_attivo = FACEBOOK_TOKEN
+    if not PAGE_ID or not token_attivo:
+        print("ℹ️ Pubblicazione Instagram saltata: Token o Page ID non configurati.", flush=True)
+        return False
+        
+    token_da_usare = ottieni_page_token_effettivo(token_attivo, PAGE_ID)
+    ig_id = ottieni_instagram_account_id(token_da_usare, PAGE_ID)
+    
+    if not ig_id:
+        msg_no_ig = (
+            "ℹ️ *PUBBLICAZIONE INSTAGRAM IN ATTESA DI COLLEGAMENTO*\n\n"
+            "Il video è stato pubblicato su Facebook. Per pubblicare automaticamente anche su *Instagram*:\n"
+            "1. Accedi a *Meta Business Suite* (o impostazioni della Pagina Facebook).\n"
+            "2. Vai su *Impostazioni -> Account collegati -> Instagram*.\n"
+            "3. Connetti il tuo profilo Instagram (Business o Creator).\n\n"
+            "Non appena collegato, il bot pubblicherà in contemporanea su entrambi i canali!"
+        )
+        print(f"ℹ️ Nessun account Instagram Business collegato alla Pagina Facebook {PAGE_ID}.", flush=True)
+        invia_notifica_telegram(msg_no_ig)
+        return False
+
+    try:
+        # 1. Inizializzazione container multimediale Resumable per Reels
+        url_container = f"https://graph.facebook.com/v19.0/{ig_id}/media"
+        file_size = os.path.getsize(video_path)
+        
+        payload_container = {
+            "media_type": "REELS",
+            "caption": caption,
+            "upload_type": "resumable",
+            "access_token": token_da_usare
+        }
+        res_cont = requests.post(url_container, data=payload_container, timeout=30, verify=False).json()
+        
+        if "id" not in res_cont or "uri" not in res_cont:
+            err_msg = res_cont.get("error", {}).get("message", str(res_cont))
+            print(f"❌ Errore creazione container Instagram Reels: {err_msg}", flush=True)
+            invia_notifica_telegram(f"⚠️ *Errore Inizializzazione Instagram Reels:*\n_{err_msg}_")
+            return False
+            
+        container_id = res_cont["id"]
+        upload_uri = res_cont["uri"]
+        print(f"  📦 Container Instagram creato con successo (ID: {container_id})", flush=True)
+        
+        # 2. Caricamento binario del video
+        headers_upload = {
+            "Authorization": f"OAuth {token_da_usare}",
+            "offset": "0",
+            "file_size": str(file_size)
+        }
+        with open(video_path, "rb") as vf:
+            r_upload = requests.post(upload_uri, headers=headers_upload, data=vf, timeout=180, verify=False)
+            
+        if r_upload.status_code not in [200, 201]:
+            print(f"❌ Errore upload dati video su Instagram: {r_upload.text}", flush=True)
+            return False
+            
+        print("  ⬆️ Video trasferito sui server di Instagram. Elaborazione in corso...", flush=True)
+        
+        # 3. Attesa elaborazione container da parte di Meta
+        import time
+        pronto = False
+        for tentativo in range(15): # max 75 secondi
+            time.sleep(5)
+            url_status = f"https://graph.facebook.com/v19.0/{container_id}?fields=status_code&access_token={token_da_usare}"
+            st_res = requests.get(url_status, timeout=15, verify=False).json()
+            stato = st_res.get("status_code")
+            if stato == "FINISHED":
+                pronto = True
+                break
+            elif stato == "ERROR":
+                print(f"❌ Errore elaborazione interna Instagram: {st_res}", flush=True)
+                return False
+                
+        if not pronto:
+            print("⚠️ Timeout elaborazione video su Instagram.", flush=True)
+            return False
+            
+        # 4. Pubblicazione definitiva del Reels su Instagram
+        url_publish = f"https://graph.facebook.com/v19.0/{ig_id}/media_publish"
+        pub_res = requests.post(url_publish, data={"creation_id": container_id, "access_token": token_da_usare}, timeout=30, verify=False).json()
+        
+        if "id" in pub_res:
+            ig_media_id = pub_res["id"]
+            print(f"✅ Video Reels pubblicato con successo su INSTAGRAM! (Media ID: {ig_media_id})", flush=True)
+            invia_notifica_telegram(f"🎉 *REELS PUBBLICATO CON SUCCESSO SU INSTAGRAM!*\n\n📸 *Instagram Media ID:* `{ig_media_id}`\n🌐 Il Reels è ora online sul tuo profilo Instagram.")
+            return True
+        else:
+            print(f"❌ Errore pubblicazione Instagram: {pub_res}", flush=True)
+            return False
+            
+    except Exception as e:
+        print(f"❌ Eccezione durante pubblicazione Instagram: {e}", flush=True)
+        return False
+
+
+def pubblica_automaticamente_tutto(video_path, caption):
+    """Pubblica automaticamente ogni video generato sia su Facebook che su Instagram."""
+    print("\n" + "="*60, flush=True)
+    print("🚀 AVVIO PUBBLICAZIONE AUTOMATICA (FACEBOOK & INSTAGRAM)", flush=True)
+    print("="*60, flush=True)
+    
+    # 1. Pubblicazione su Pagina Facebook
+    fb_ok = pubblica_video_facebook(video_path, caption)
+    
+    # 2. Pubblicazione su Instagram Reels
+    ig_ok = pubblica_reels_instagram(video_path, caption)
+    
+    return fb_ok or ig_ok
 
 
 # --- FLUSSO PRINCIPALE ---
 async def main():
     print("="*60, flush=True)
-    print("🎬 AVVIO BOT VIDEO REELS & STORIE CON VOCE ED EFFETTI DINAMICI", flush=True)
+    print("🎬 AVVIO BOT VIDEO REELS (PUBBLICAZIONE AUTOMATICA FB & IG)", flush=True)
     print("⭐ Personal Branding: Antonio Giancani", flush=True)
     print("="*60, flush=True)
     
     import argparse
-    parser = argparse.ArgumentParser(description="Bot Video Reels da Colonna F")
+    parser = argparse.ArgumentParser(description="Bot Video Reels da Colonna F con Pubblicazione Automatica FB & IG")
     parser.add_argument("--id", type=str, default=None, help="ID citazione specifico")
-    parser.add_argument("--voice", type=str, default="it-IT-DiegoNeural", help="Voce neurale italiana (es. it-IT-DiegoNeural, it-IT-GiuseppeNeural, it-IT-ElsaNeural)")
-    parser.add_argument("--auto-publish", action="store_true", help="Pubblica direttamente su Facebook")
+    parser.add_argument("--voice", type=str, default="it-IT-DiegoNeural", help="Voce neurale italiana (es. it-IT-DiegoNeural)")
+    parser.add_argument("--auto-publish", action="store_true", default=True, help="Pubblicazione automatica attiva (default: True)")
+    parser.add_argument("--manual-only", action="store_true", help="Disattiva la pubblicazione automatica e richiede approvazione")
     args = parser.parse_args()
     
+    pubblica_in_automatico = not args.manual_only
     voce_selezionata = args.voice
     
     # 1. Estrazione rigorosa da Colonna F
@@ -807,9 +936,9 @@ async def main():
     # 7. Invio su Telegram con Bottoni Interattivi
     invia_video_telegram(video_file, caption_fb, item_id)
     
-    # 8. Pubblicazione diretta se richiesta
-    if args.auto_publish:
-        pubblica_video_facebook(video_file, caption_fb)
+    # 8. Pubblicazione Automatica su Facebook & Instagram ogni volta che viene generato
+    if pubblica_in_automatico:
+        pubblica_automaticamente_tutto(video_file, caption_fb)
         
     print("\n" + "="*60, flush=True)
     print(f"⭐ VIDEO REELS #{item_id} INVIATO CON SUCCESSO — ANTONIO GIANCANI ⭐", flush=True)
