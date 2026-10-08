@@ -2,15 +2,17 @@
 # -*- coding: utf-8 -*-
 """
 ======================================================================
-  🎬 BOT VIDEO REELS & STORIE CON VOCE ED EFFETTI DINAMICI
-  Autore: Antonio Giancani
-  - Estrazione: Rigorosamente da Colonna F (Mindset.csv)
-  - Voce Narrante: Italiano Neurale (Edge-TTS / gTTS)
-  - Grafica: 1080x1920 (9:16 Verticale Reels/Stories)
-  - Badge Logo: faccia.png (Avatar circolare con bordo oro)
-  - Animazione: FFmpeg Ken Burns Effect (Zoom & Pan cinematografico)
-  - Personal Branding: Esclusivo su Antonio Giancani (senza menzione agenzia)
-  - Invio & Approvazione: Telegram con bottoni interattivi + Facebook Video Graph API
+  🎬 BOT VIDEO REELS & STORIE (1080x1920) — ANTONIO GIANCANI
+  - Sorgente Frasi: Mindset.csv (Rigorosamente da Colonna F)
+  - Video Background: Pixabay API (HD / Medium) con Ping-Pong Rewind Loop continuo
+  - Voce Narrante: Italiano Neurale Edge-TTS (Lettura & Meditazione profonda)
+  - Musica di Sottofondo: Tracce Royalty-Free bilanciate con Ducking (14%)
+  - Grafica Premium:
+      * Banner Profilo in ALTO con Avatar faccia.png e bordo oro (Video in primo piano)
+      * Card Citazione Frosted Glass nel terzo inferiore
+  - Palinsesto: Orari liberi da palinsesto live (08:30, 12:30, 16:30)
+  - Consegna: Telegram (Chat ID 1723292483) con Approvazione Facebook
+  - Regola Mandatoria: Chiusura copy sempre con '— Immobiliare Giancani'
 ======================================================================
 """
 
@@ -22,707 +24,623 @@ import time
 import random
 import asyncio
 import textwrap
+import datetime
+import subprocess
 import requests
-from io import BytesIO
-from PIL import Image, ImageDraw, ImageFont
-import urllib.parse
-import imageio_ffmpeg
 import urllib3
+import imageio_ffmpeg
+from PIL import Image, ImageDraw, ImageFont
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    def load_dotenv(*args, **kwargs):
+        pass
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- CONFIGURAZIONE ---
-PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID") or "234931856561526"
-FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN") or ""
-TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN") or "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M"
-TELEGRAM_CHAT_ID = os.environ.get("MINDSET_CHAT_ID") or "1723292483"
+# --- 1. CONFIGURAZIONE & AMBIENTE ---
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+load_dotenv(os.path.join(BASE_DIR, ".env"))
 
-CSV_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Mindset.csv")
-LOGO_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "faccia.png")
-MUSIC_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "musica_sottofondo")
-FONT_NAME = "arial.ttf"
+PIXABAY_API_KEY = os.environ.get("PIXABAY_API_KEY") or "57944902-1332365540ba08b082d67dcdf"
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TELEGRAM_TOKEN") or os.environ.get("AGENCY_TELEGRAM_TOKEN") or "8671578336:AAEHI-s-2g3dY9qnIIVc_hWzDdOuHm-MS6M"
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("MINDSET_CHAT_ID") or "1723292483"
 
-# Voce predefinita: Diego Neural
-DEFAULT_VOICE = "it-IT-DiegoNeural"
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
+FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID") or "234931856561526"
+FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN") or os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") or ""
 
-# Percorso FFmpeg
-FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
+CSV_FILE = os.path.join(BASE_DIR, "Mindset.csv")
+LOGO_PATH = os.path.join(BASE_DIR, "faccia.png")
+MUSIC_DIR = os.path.join(BASE_DIR, "musica_sottofondo")
+TEMP_DIR = os.path.join(BASE_DIR, "temp")
+OUTPUT_DIR = os.path.join(BASE_DIR, "output")
 
-# Cartella temporanea di montaggio video
-WORK_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "video_reels_output")
-os.makedirs(WORK_DIR, exist_ok=True)
+os.makedirs(TEMP_DIR, exist_ok=True)
+os.makedirs(OUTPUT_DIR, exist_ok=True)
 os.makedirs(MUSIC_DIR, exist_ok=True)
 
+FFMPEG_EXE = imageio_ffmpeg.get_ffmpeg_exe()
 
-# --- 1. ESTRAZIONE RIGOROSA DA COLONNA F ---
-def get_random_quote(id_richiesto=None):
-    try:
-        if not os.path.exists(CSV_FILE):
-            print(f"⚠️ File {CSV_FILE} non trovato!")
-            return None
-            
-        rows = []
-        with open(CSV_FILE, "r", encoding="utf-8") as f:
-            reader = csv.reader(f)
-            header = next(reader, None)
-            for idx, r in enumerate(reader, start=1):
-                if not r or len(r) < 2:
-                    continue
-                if len(r) >= 6:
-                    rows.append({
-                        "ID": str(r[0]),
-                        "Categoria": str(r[1]).strip(),
-                        "Frase": str(r[2]).strip(),
-                        "Autore": str(r[3]).strip(),
-                        "Stato": str(r[4]).strip(),
-                        "Colonna_F": str(r[5]).strip() # TESTO PRELEVATO DALLA COLONNA F
-                    })
-                elif len(r) >= 3:
-                    # Formato standard 3 colonne: Categoria, Frase, Autore
-                    rows.append({
-                        "ID": str(idx),
-                        "Categoria": str(r[0]).strip(),
-                        "Frase": str(r[1]).strip(),
-                        "Autore": str(r[2]).strip(),
-                        "Stato": "Disponibile",
-                        "Colonna_F": f"{str(r[1]).strip()} — {str(r[2]).strip()}" # Equivalente Colonna F
-                    })
-                    
-        if not rows:
-            print("⚠️ Nessuna riga valida trovata nel CSV!")
-            return None
-            
-        if id_richiesto is not None:
-            trovati = [r for r in rows if str(r["ID"]) == str(id_richiesto)]
-            if trovati:
-                return trovati[0]
-                
-        selected = random.choice(rows)
-        print(f"📖 [COLONNA F] Citazione estratta (Riga {selected['ID']}): \"{selected['Colonna_F']}\"")
-        return selected
-    except Exception as e:
-        print(f"⚠️ Errore lettura CSV: {e}")
-        return None
+# Orari ottimali liberi (distanti da 07:00 Storie YouTube e 19:00-01:00 Diretta Streaming)
+ORARI_LIBERI = ["08:30", "12:30", "16:30"]
+
+SEARCH_QUERIES = [
+    "focus",
+    "discipline",
+    "running dark",
+    "gym workout",
+    "sunrise horizon",
+    "city timelapse night",
+    "luxury office"
+]
 
 
-# --- 2. GENERAZIONE MICRO-STORIA NARRATA (STORYTELLING SINCRONIZZATO) ---
-def genera_micro_storia(categoria, frase, autore):
-    """
-    Genera una micro-storia o parabola di circa 28-35 parole (10-14 secondi di narrazione a voce)
-    che racconta una situazione concreta mentre sullo schermo appare la citazione.
-    """
-    cat_pulita = str(categoria).upper().strip()
-    frase_pulita = str(frase).strip('“”"\' ')
-    autore_pulito = str(autore).strip()
-    
-    # 1. Tentativo con Groq API (Ultra-veloce e gratuito)
-    groq_key = os.environ.get("GROQ_API_KEY")
-    if groq_key:
-        try:
-            headers = {"Authorization": f"Bearer {groq_key}", "Content-Type": "application/json"}
-            payload = {
-                "model": "qwen/qwen3.8-27b",
-                "messages": [
-                    {
-                        "role": "system",
-                        "content": (
-                            "Sei la voce narrante di Antonio Giancani per un Reels Instagram/Facebook. "
-                            "Sullo schermo l'utente legge una citazione. Tu devi raccontare a voce una micro-storia "
-                            "o parabola concreta di massimo 30-35 parole (circa 11-13 secondi di audio) "
-                            "che illustri il significato pratico di quel pensiero. "
-                            "Sii diretto, profondo ed emotivo. Non ripetere la citazione parola per parola tra virgolette, "
-                            "racconta direttamente la storia in un perfetto italiano fluido."
-                        )
-                    },
-                    {
-                        "role": "user",
-                        "content": f"Citazione: \"{frase_pulita}\". Autore: {autore_pulito}. Categoria: {cat_pulita}."
-                    }
-                ],
-                "max_tokens": 100,
-                "temperature": 0.7
-            }
-            r = requests.post("https://api.groq.com/openai/v1/chat/completions", json=payload, headers=headers, verify=False, timeout=8)
-            if r.status_code == 200:
-                testo = r.json()["choices"][0]["message"]["content"].strip().strip('"')
-                if len(testo.split()) >= 15:
-                    print("  ✨ Micro-storia creata con AI Groq!", flush=True)
-                    return testo
-        except Exception as e:
-            print(f"  ⚠️ Groq fallback: {e}")
-
-    # 2. Tentativo con Google Gemini API
-    gemini_key = os.environ.get("GOOGLE_API_KEY")
-    if gemini_key:
-        try:
-            url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={gemini_key}"
-            prompt_g = (
-                f"Scrivi una brevissima micro-storia in italiano di massimo 30 parole che dia vita a questo principio: "
-                f"\"{frase_pulita}\" ({autore_pulito}). Non ripetere la citazione, racconta solo la micro-storia per un video Reels."
-            )
-            payload_g = {"contents": [{"parts": [{"text": prompt_g}]}]}
-            r_g = requests.post(url_gemini, json=payload_g, timeout=8, verify=False)
-            if r_g.status_code == 200:
-                cand = r_g.json().get("candidates", [])[0]["content"]["parts"][0]["text"].strip().strip('"')
-                if len(cand.split()) >= 15:
-                    print("  ✨ Micro-storia creata con Gemini AI!", flush=True)
-                    return cand
-        except Exception:
-            pass
-
-    # 3. Fallback Narrativo Locale Intelligente (100% offline)
-    storie_locali = {
-        "IMMOBILIARE": [
-            "Mentre molti spendono in beni che perdono valore domani, chi sceglie il mattone costruisce una fortezza silenziosa che protegge la famiglia e fa crescere il patrimonio negli anni.",
-            "Nel 1980 un uomo scelse una casa invece di spese effimere. Quarant'anni dopo, quel solo immobile ha finanziato gli studi dei figli e garantito serenità a tutta la sua famiglia.",
-            "La vera sicurezza non è accumulare cifre su uno schermo, ma possedere qualcosa di concreto sotto i tuoi piedi, capace di superare ogni tempesta economica."
-        ],
-        "MINDSET": [
-            "Due persone guardano la stessa collina: una vede una salita faticosa, l'altra vede il panorama che conquisterà dall'alto. La realtà non cambia, cambia solo la tua mente.",
-            "Quando decidi che nulla può fermarti, gli ostacoli smettono di essere muri e diventano semplicemente i gradini su cui salire per raggiungere la tua vera visione.",
-            "La mente è come una terra fertile: se non semini intenzionalmente pensieri di grandezza e fiducia, le erbacce del dubbio cresceranno da sole."
-        ],
-        "VENDITA": [
-            "Un consulente cercava di vendere a tutti i costi e riceveva solo rifiuti. Quando ha iniziato ad ascoltare davvero i bisogni del cliente, non ha più dovuto vendere nulla: hanno comprato loro.",
-            "Non si tratta di convincere nessuno con le parole, ma di mostrare con i fatti che hai a cuore il futuro e il benessere di chi hai davanti.",
-            "La fiducia non si compra con le promesse: si guadagna con la trasparenza e con la capacità di mantenere sempre la parola data."
-        ],
-        "DISCIPLINA": [
-            "Ogni mattina lo scultore colpisce il marmo. Per mesi sembra non cambiare nulla, finché un giorno l'opera d'arte emerge. La grandezza è solo costanza invisibile.",
-            "Nei giorni in cui manca l'entusiasmo, è la disciplina a prendere il timone. Chi vince non è chi ha sempre voglia, ma chi non si ferma mai.",
-            "Non cercare scorciatoie miracolose. La vera magia accade quando ripeti i piccoli gesti giusti ogni singolo giorno, senza cedere alle distrazioni."
-        ],
-        "FOCUS": [
-            "I raggi del sole scaldano la terra, ma solo quando una lente li concentra in un unico punto scocca la scintilla. Il tuo successo dipende da quanto sai essere focalizzato.",
-            "Elimina il rumore di fondo. Chi cerca di fare tutto contemporaneamente finisce per non concludere nulla. Scegli la tua priorità e dedicale tutta la tua forza.",
-            "Dire di no a cento cose secondarie è l'unico modo per dire un sì straordinario al tuo obiettivo più grande."
-        ],
-        "BUSINESS": [
-            "Due imprenditori avevano la stessa idea: uno ha aspettato il momento perfetto, l'altro ha iniziato subito e ha corretto la rotta strada facendo. Oggi il secondo guida il mercato.",
-            "Nel mondo degli affari la velocità di esecuzione batte la perfezione teorica. Decidi con lucidità, agisci con determinazione e crea valore concreto.",
-            "La reputazione richiede vent'anni per essere costruita e cinque minuti per essere rovinata. Fai sempre ciò che è giusto, anche quando nessuno ti guarda."
-        ]
-    }
-    opzioni = storie_locali.get(cat_pulita, storie_locali["MINDSET"])
-    return random.choice(opzioni)
-
-
-# --- 3. SINTESI VOCALE NEURALE ITALIANA CON FALLBACK ---
-async def genera_audio_scena(testo, output_path, voce="it-IT-DiegoNeural"):
-    success = False
-    try:
-        import edge_tts
-        communicate = edge_tts.Communicate(testo, voce, rate="+2%", pitch="+0Hz")
-        await asyncio.wait_for(communicate.save(output_path), timeout=8)
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 1000:
-            success = True
-    except Exception:
-        pass
-        
-    if not success:
-        from gtts import gTTS
-        tts = gTTS(text=testo, lang='it', slow=False)
-        tts.save(output_path)
-    print(f"  🎙️ Traccia vocale registrata: {output_path} ({round(os.path.getsize(output_path)/1024, 1)} KB)", flush=True)
-
-
-# --- 3. GENERAZIONE SFONDO AI DINAMICO 9:16 (720x1280) ---
-def get_ai_background(categoria, output_path, seed=42):
-    cat = str(categoria).lower().strip()
-    base_style = "cinematic lighting, photorealistic 8k, luxury, success atmosphere, golden hour, high contrast, elegant vertical 9:16 composition"
-    
-    prompts_mindset = [
-        f"visionary leader in tailored navy suit on top of modern skyscraper looking at sunrise, {base_style}",
-        f"majestic lion close up, intense gaze, dark background with golden light, {base_style}",
-        f"mountain climber on the highest sunlit peak, inspiring sun rays, {base_style}"
+# --- 2. GESTIONE FONT WINDOWS & SISTEMA ---
+def get_font(size, bold=True):
+    """Carica un font TrueType pulito con fallback sicuro su Windows e Linux."""
+    candidati = [
+        os.path.join(BASE_DIR, "assets", "fonts", "Cinzel-Bold.ttf"),
+        os.path.join(BASE_DIR, "assets", "fonts", "Lora-Bold.ttf"),
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
+        "C:/Windows/Fonts/calibrib.ttf" if bold else "C:/Windows/Fonts/calibri.ttf",
+        "C:/Windows/Fonts/seguisb.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
     ]
-    prompts_business = [
-        f"ultra luxury modern villa exterior with crystal swimming pool at sunset, masterpiece, {base_style}",
-        f"modern architectural glass skyscraper reaching into blue sky, {base_style}",
-        f"prestigious executive meeting in luxury panoramic lounge, {base_style}"
-    ]
-    prompts_focus = [
-        f"golden highway at night with light trails, speed, futuristic skyline, {base_style}",
-        f"chess board close up with golden king piece in spotlight, strategy, {base_style}",
-        f"athlete pulling bowstring with laser focus, dramatic lighting, {base_style}"
-    ]
-    prompts_immobiliare = [
-        f"prestigious Mediterranean luxury estate entrance with fountain and palm trees, sunset, {base_style}",
-        f"modern luxury villa with private garden, panoramic sea view, warm sunlight, {base_style}"
-    ]
-
-    if "motiva" in cat or "mindset" in cat: 
-        prompt_text = random.choice(prompts_mindset)
-    elif "disciplina" in cat or "focus" in cat: 
-        prompt_text = random.choice(prompts_focus)
-    elif "immob" in cat:
-        prompt_text = random.choice(prompts_immobiliare)
-    else: 
-        prompt_text = random.choice(prompts_business)
-
-    print(f"  🎨 Generazione sfondo AI tematico...", flush=True)
-    
-    # Tentativo Pollinations
-    try:
-        clean_prompt = urllib.parse.quote(prompt_text)
-        url_ai = f"https://image.pollinations.ai/prompt/{clean_prompt}?width=720&height=1280&nologo=true&seed={seed}"
-        res_ai = requests.get(url_ai, timeout=30, verify=False)
-        if res_ai.status_code == 200 and len(res_ai.content) > 10000:
-            with open(output_path, "wb") as f:
-                f.write(res_ai.content)
-            print(f"  ✅ Sfondo AI scaricato con successo!", flush=True)
-            return True
-    except Exception as e:
-        print(f"  ⚠️ Timeout AI: {e}. Uso fallback HD...")
-
-    # Fallback Picsum
-    try:
-        url_stock = f"https://picsum.photos/seed/{seed}/720/1280?grayscale&blur=2"
-        res_stock = requests.get(url_stock, timeout=15, verify=False)
-        if res_stock.status_code == 200:
-            with open(output_path, "wb") as f:
-                f.write(res_stock.content)
-            print(f"  ✅ Sfondo stock sicuro scaricato!", flush=True)
-            return True
-    except Exception:
-        pass
-
-    # Sfondo scuro di emergenza
-    img_dark = Image.new('RGB', (720, 1280), (18, 22, 30))
-    img_dark.save(output_path)
-    return True
-
-
-# --- 4. CARICAMENTO FONT ---
-def load_font(size):
-    fonts = [FONT_NAME, "C:\\Windows\\Fonts\\arialbd.ttf", "C:\\Windows\\Fonts\\arial.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"]
-    for f in fonts:
-        try:
-            return ImageFont.truetype(f, size)
-        except: 
-            continue
+    for p in candidati:
+        if os.path.exists(p):
+            try:
+                return ImageFont.truetype(p, size)
+            except Exception:
+                continue
     return ImageFont.load_default()
 
 
-# --- 5. COMPOSIZIONE GRAFICA VERTICALE CON BADGE & TIPOGRAFIA ORO ---
-def componi_frame_grafico(bg_path, testo_principale, autore, output_frame_path, categoria="MINDSET"):
+# --- 3. ESTRAZIONE RIGOROSA DA COLONNA F (MINDSET.CSV) ---
+def estrai_frase_colonna_f(csv_path=CSV_FILE, id_richiesto=None):
     """
-    Sovrappone lo sfondo AI con:
-    - Overlay scuro di contrasto
-    - Box in vetro scuro semitrasparente con bordo dorato
-    - Testo citazione e autore in oro
-    - Badge circolare con foto reale faccia.png
-    - Firma 'Antonio Giancani - CONSULENZA & STRATEGIA'
+    Legge Mindset.csv ed estrae tassativamente i testi dalla Colonna F (indice 5).
+    Filtra righe vuote e seleziona la citazione.
     """
-    base = Image.open(bg_path).convert("RGBA").resize((720, 1280))
-    
-    # Overlay scuro generale
-    overlay_dark = Image.new('RGBA', base.size, (0, 0, 0, 110))
-    base = Image.alpha_composite(base, overlay_dark)
-    
-    overlay_ui = Image.new('RGBA', base.size, (0, 0, 0, 0))
-    draw = ImageDraw.Draw(overlay_ui)
-    W, H = base.size
-    
-    # Header Superiore
-    font_cat = load_font(28)
-    draw.text((W//2, 80), f"◆ {categoria.upper()} ◆", font=font_cat, fill="#FFD700", anchor="mt")
-    
-    # Testo Citazione (Layout Più Stretto ed Elegante)
-    testo_pulito = str(testo_principale).strip()
-    if len(testo_pulito) > 110:
-        font_size = 33
-        line_height = 44
-        wrap_w = 21
-    elif len(testo_pulito) > 60:
-        font_size = 39
-        line_height = 50
-        wrap_w = 18
-    else:
-        font_size = 45
-        line_height = 58
-        wrap_w = 15
+    if not os.path.exists(csv_path):
+        raise FileNotFoundError(f"File CSV non trovato: {csv_path}")
+
+    righe_valide = []
+    with open(csv_path, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        header = next(reader, None)
         
-    font_quote = load_font(font_size)
-    font_author = load_font(28)
-    
-    lines = textwrap.wrap(f"“{testo_pulito}”", width=wrap_w)
-    total_text_h = len(lines) * line_height + 55
-    
-    start_y = ((H - total_text_h) // 2) - 40
-    padding = 32
-    
-    # Box centrale con bordo oro - Più Stretto Lateralmente (Margini 70px)
-    box_margin_x = 70
-    box_rect = [(box_margin_x, start_y - padding), (W - box_margin_x, start_y + total_text_h + padding)]
-    draw.rounded_rectangle(box_rect, radius=18, fill=(12, 16, 24, 210), outline="#FFD700", width=2)
-    
-    # Scrittura testo
-    curr_y = start_y
-    for l in lines:
-        draw.text((W//2, curr_y), l, font=font_quote, fill="white", anchor="mt")
-        curr_y += line_height
-        
-    # Scrittura autore
-    draw.text((W//2, curr_y + 12), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
-    
-    # Inserimento Badge Faccia in basso
-    logo_size = 90
-    if os.path.exists(LOGO_PATH):
+        for idx, row in enumerate(reader, start=1):
+            if not row or len(row) < 3:
+                continue
+            
+            testo_colonna_f = ""
+            if len(row) >= 6:
+                testo_colonna_f = row[5].strip()
+            elif len(row) >= 3:
+                testo_colonna_f = f"{row[1].strip()} — {row[2].strip()}"
+                
+            if not testo_colonna_f:
+                continue
+                
+            righe_valide.append({
+                "id": str(row[0]) if len(row) > 0 else str(idx),
+                "categoria": row[1].strip() if len(row) > 1 else "Mindset",
+                "frase": row[2].strip() if len(row) > 2 else testo_colonna_f,
+                "autore": row[3].strip() if len(row) > 3 else "Antonio Giancani",
+                "stato": row[4].strip() if len(row) > 4 else "Disponibile",
+                "colonna_f": testo_colonna_f
+            })
+
+    if not righe_valide:
+        raise ValueError("Nessuna riga valida trovata in Mindset.csv.")
+
+    if id_richiesto is not None:
+        selezionate = [r for r in righe_valide if str(r["id"]) == str(id_richiesto)]
+        if selezionate:
+            return selezionate[0]
+
+    scelta = random.choice(righe_valide)
+    print(f"📖 [COLONNA F] Citazione selezionata (Riga #{scelta['id']} - {scelta['categoria']}):")
+    print(f"   \"{scelta['colonna_f']}\"")
+    return scelta
+
+
+# --- 4. GENERAZIONE MEDITAZIONE & RIFLESSIONE (DIEGO IL SUGGERITORE DI UN'IDEA) ---
+def genera_meditazione(categoria, frase, autore):
+    """
+    Genera un testo vocale interpretato da Diego come 'il suggeritore di un'idea':
+    un consigliere intimo, carismatico e riflessivo che sussurra all'ascoltatore un'illuminazione o una prospettiva strategica.
+    """
+    frase_pulita = frase.strip('“”"\' ')
+    cat_pulita = categoria.upper().strip()
+
+    # 1. Tentativo con Gemini AI
+    if GEMINI_API_KEY:
         try:
-            face = Image.open(LOGO_PATH).convert("RGBA").resize((logo_size, logo_size), Image.Resampling.LANCZOS)
-            face_x = 45
-            face_y = H - logo_size - 60
-            base.paste(face, (face_x, face_y), face)
+            url_gemini = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={GEMINI_API_KEY}"
+            prompt = (
+                f"Sei Diego, la voce narrante confidenziale e ispiratrice per Antonio Giancani nei video Shorts. "
+                f"Il tuo ruolo è quello di essere 'il suggeritore di un'idea': non un motivatore aggressivo, "
+                f"ma un mentore intimo e profondo che sussurra all'orecchio dell'ascoltatore un'illuminazione o una svolta di pensiero. "
+                f"L'argomento è '{cat_pulita}'. La frase guida è: \"{frase_pulita}\" ({autore}). "
+                f"Scrivi una riflessione di 24-28 parole che inizi suggerendo un'idea con tono calmo e magnetico "
+                f"(ad esempio: 'Ti lascio un'idea...', 'Pensa a questo...', 'E se la vera svolta fosse...', 'Ascolta quest\\'idea...'). "
+                f"Il testo deve suonare naturale, elegante e penetrante, come un segreto rivelato. Niente virgolette o emoji."
+            )
+            payload = {"contents": [{"parts": [{"text": prompt}]}]}
+            res = requests.post(url_gemini, json=payload, timeout=8, verify=False)
+            if res.status_code == 200:
+                cand = res.json().get("candidates", [])
+                if cand and cand[0].get("content", {}).get("parts"):
+                    meditazione_ai = cand[0]["content"]["parts"][0]["text"].strip()
+                    if len(meditazione_ai.split()) >= 10:
+                        testo_finale = f"{frase_pulita}. {meditazione_ai}"
+                        print(f"✨ Idea suggerita da Diego (Gemini AI): \"{meditazione_ai}\"")
+                        return testo_finale
         except Exception as e:
-            print(f"⚠️ Errore caricamento faccia: {e}")
-            face_x = 45
-            face_y = H - logo_size - 60
-    else:
-        face_x = 45
-        face_y = H - logo_size - 60
+            print(f"⚠️ Fallback Gemini: {e}")
 
-    # Testo Branding Personale
-    font_name = load_font(34)
-    font_sub = load_font(20)
-    text_x = face_x + logo_size + 18
-    
-    draw.text((text_x, face_y + 12), "Antonio Giancani", font=font_name, fill="#FFD700")
-    draw.text((text_x, face_y + 50), "CONSULENZA & STRATEGIA", font=font_sub, fill="#E0E0E0")
-    
-    final_img = Image.alpha_composite(base, overlay_ui).convert("RGB")
-    final_img.save(output_frame_path)
-    return True
-
-
-# --- 6. GESTIONE MUSICA DI SOTTOFONDO (CC0 NO COPYRIGHT SEMPRE DIVERSA) ---
-def scegli_musica_sottofondo(categoria="MINDSET"):
-    """Seleziona casualmente una traccia musicale CC0 Public Domain sempre diversa."""
-    if not os.path.exists(MUSIC_DIR):
-        os.makedirs(MUSIC_DIR, exist_ok=True)
-        
-    tracce = [os.path.join(MUSIC_DIR, f) for f in os.listdir(MUSIC_DIR) if f.endswith('.mp3') and os.path.getsize(os.path.join(MUSIC_DIR, f)) > 1000]
-    
-    # Se non sono presenti tracce locali, scarica fallback CC0 istantaneo
-    if not tracce:
-        print("  🎵 Download traccia musicale CC0 no-copyright di supporto...", flush=True)
-        fallback_urls = [
-            ("ambient_calma.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Ambient_HIGH_11.mp3"),
-            ("pianoforte_classico.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Classical_HIGH_01.mp3"),
-            ("cinematic_ispirazione.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Film_HIGH_15.mp3"),
-            ("jazz_business.mp3", "https://raw.githubusercontent.com/HazelvdW/MUSIFEAST-17/main/stimuli/Jazz_HIGH_08.mp3")
+    # 2. Fallback offline con stile 'Suggeritore di un'idea'
+    meditazioni_archivio = {
+        "DISCIPLINA": [
+            "Ti lascio un'idea: la disciplina non è una punizione, ma il prezzo della tua libertà futura. Scegli oggi ciò che conta davvero per te.",
+            "Pensa a questo: quando l'entusiasmo si spegne, la costanza silenziosa è l'unico vero ponte tra chi sogna e chi realizza.",
+            "E se la vera differenza stesse nel fare quella piccola azione difficile, proprio quando non ne hai alcuna voglia? Riflettici."
+        ],
+        "MINDSET": [
+            "Ascolta quest'idea: il mondo non cambia se continui a guardarlo nello stesso modo. Cambia prospettiva, e gli ostacoli diventeranno la tua scala.",
+            "Ti lascio una riflessione: non sono gli eventi a definire la tua giornata, ma l'interpretazione che la tua mente sceglie di darne.",
+            "Pensa a questo: la realtà che vivi è solo il riflesso delle convinzioni che hai accettato. E se oggi decidessi di puntare più in alto?"
+        ],
+        "FOCUS": [
+            "Ti suggerisco un'idea: in un mondo pieno di rumore, la concentrazione su una sola cosa alla volta è la forma più pura di potere.",
+            "Riflettici un istante: ogni volta che dici di sì a una distrazione, stai dicendo di no al tuo obiettivo più importante. Scegli con cura.",
+            "E se il segreto fosse eliminare invece di aggiungere? Togli ciò che non serve e guarda quanta forza sprigiona la tua attenzione."
+        ],
+        "VENDITA": [
+            "Ti lascio un'idea diversa sulla vendita: smetti di convincere e inizia ad ascoltare. Quando comprendi davvero, non devi più vendere nulla.",
+            "Pensa a questo: le persone non comprano promesse, comprano la certezza e la fiducia che sai trasmettere guardandole negli occhi.",
+            "Ascolta: la vendita più importante è quella che fai a te stesso ogni mattina, credendo fino in fondo nel valore che stai portando."
+        ],
+        "IMMOBILIARE": [
+            "Ti suggerisco una prospettiva: una casa non è solo mattoni, è il palcoscenico dove costruisci i ricordi e la serenità della tua famiglia.",
+            "Pensa a questo: mentre tutto intorno cambia velocemente, possedere qualcosa di solido sotto i piedi è la vera ancora del tuo futuro.",
+            "E se ogni investimento immobiliare fosse prima di tutto un atto di protezione per il tuo domani? Guardalo da questa angolazione."
+        ],
+        "BUSINESS": [
+            "Ti lascio un'idea strategica: le idee valgono poco finché non incontrano il coraggio dell'esecuzione rapida. Decidi e fai il primo passo.",
+            "Pensa a questo: la grandezza di un'impresa non sta nell'assenza di problemi, ma nella lucidità con cui li trasformi in opportunità.",
+            "Ascolta: l'eccellenza non è un atto isolato, è un'abitudine che coltivi nei dettagli invisibili ogni singolo giorno."
         ]
-        for name, url in fallback_urls:
-            try:
-                dest = os.path.join(MUSIC_DIR, name)
-                r = requests.get(url, timeout=15, verify=False)
-                if r.status_code == 200 and len(r.content) > 1000:
-                    with open(dest, 'wb') as f:
-                        f.write(r.content)
-                    tracce.append(dest)
-            except Exception:
-                pass
-
-    if tracce:
-        scelta = random.choice(tracce)
-        print(f"  🎶 Sottofondo musicale selezionato (Royalty Free): {os.path.basename(scelta)}", flush=True)
-        return scelta
-    return None
+    }
+    opzioni = meditazioni_archivio.get(cat_pulita, meditazioni_archivio["MINDSET"])
+    meditazione_scelta = random.choice(opzioni)
+    testo_finale = f"{frase_pulita}. {meditazione_scelta}"
+    print(f"✨ Idea suggerita da Diego (Archivio): \"{meditazione_scelta}\"")
+    return testo_finale
 
 
-# --- 7. CALCOLO DURATA AUDIO ---
-def ottieni_durata_audio(audio_path):
-    import subprocess
-    cmd = [FFMPEG_EXE, "-i", audio_path]
-    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+# --- 5. SINTESI VOCALE CON EDGE-TTS (DIEGO NEURAL: SUGGERITORE DI UN'IDEA) ---
+async def sintetizza_audio_voce(testo_narrato, output_audio_path, voce="it-IT-DiegoNeural"):
+    """Sintetizza la narrazione con voce neurale italiana Diego calibrata (-2% rate per ritmo intimo e riflessivo)."""
+    import edge_tts
+    print(f"🎙️ Generazione voce Diego narrante (suggeritore di un'idea, voce: {voce})...")
+    communicate = edge_tts.Communicate(testo_narrato, voce, rate="-2%", pitch="+0Hz")
+    await communicate.save(output_audio_path)
+    if not os.path.exists(output_audio_path) or os.path.getsize(output_audio_path) < 1000:
+        raise RuntimeError("Errore sintesi vocale: file audio non generato o non valido.")
+    print(f"✅ Voce registrata: {output_audio_path} ({round(os.path.getsize(output_audio_path)/1024, 1)} KB)")
+
+
+def ottieni_durata_file(media_path):
+    """Calcola la durata esatta di qualsiasi file audio o video tramite FFmpeg."""
+    cmd = [FFMPEG_EXE, "-i", media_path]
+    p = subprocess.Popen(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
     _, stderr = p.communicate()
-    for line in stderr.decode('utf-8', errors='ignore').split("\n"):
+    for line in stderr.splitlines():
         if "Duration:" in line:
             parts = line.split("Duration:")[1].split(",")[0].strip()
             h, m, s = parts.split(":")
             return float(h)*3600 + float(m)*60 + float(s)
-    return 5.0
+    return 8.0
 
 
-# --- 8. MONTAGGIO VIDEO CON EFFETTO KEN BURNS E MIX AUDIO SOTTOFONDO ---
-def crea_video_animato(frame_img_path, audio_path, output_video_path, bg_music_path=None):
+# --- 6. DOWNLOAD CLIP VIDEO VIA PIXABAY API ---
+def cerca_e_scarica_clip_pixabay(query=None, video_id=None, temp_dir=TEMP_DIR):
     """
-    Anima l'immagine con Slow Zoom in formato Reels 9:16 e mixa la voce neurale
-    con un sottofondo musicale elegante a volume bilanciato (14%) con dissolvenza.
+    Cerca e scarica una clip di alta qualità da Pixabay.
+    Supporta:
+    - video_id o URL diretto di Pixabay (es. 34091 oppure https://pixabay.com/videos/id-34091/)
+    - query personalizzata (in italiano o inglese: mare, lusso, skyline, ufficio, tramonto, ecc.)
+    - query casuale automatica tra temi di determinazione e mindset
     """
-    import subprocess
-    durata = ottieni_durata_audio(audio_path) + 0.8
-    frames_totali = int(durata * 25)
-    
-    # Filtro Zoom Pan fluido 720x1280 (9:16)
-    zoom_filter = f"zoompan=z='min(zoom+0.0008,1.15)':d={frames_totali}:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)':s=720x1280:fps=25"
-    
+    import re
+    if not PIXABAY_API_KEY:
+        raise ValueError("PIXABAY_API_KEY mancante nel file .env.")
+
+    url = "https://pixabay.com/api/videos/"
+
+    # 1. Ricerca per ID o Link specifico
+    if video_id:
+        clean_id_match = re.search(r"(\d+)", str(video_id))
+        clean_id = clean_id_match.group(1) if clean_id_match else str(video_id).strip()
+        print(f"🎯 [PIXABAY API] Ricerca video specifico per ID: #{clean_id}...")
+        params = {"key": PIXABAY_API_KEY, "id": clean_id}
+        res = requests.get(url, params=params, verify=False, timeout=20)
+        data = res.json()
+        hits = data.get("hits", [])
+        if hits:
+            clip_scelta = hits[0]
+            query_usata = f"Video #{clean_id} ({clip_scelta.get('tags', 'custom')})"
+        else:
+            print(f"⚠️ Video #{clean_id} non trovato su Pixabay. Procedo con ricerca per tema...")
+            video_id = None
+
+    # 2. Ricerca per parola chiave / tema
+    if not video_id:
+        query_scelta = query or random.choice(SEARCH_QUERIES)
+        print(f"🔍 [PIXABAY API] Ricerca clip video per tema: '{query_scelta}'...")
+        params = {
+            "key": PIXABAY_API_KEY,
+            "q": query_scelta,
+            "video_type": "all",
+            "per_page": 20
+        }
+
+        try:
+            res = requests.get(url, params=params, verify=False, timeout=20)
+            res.raise_for_status()
+            data = res.json()
+        except Exception:
+            params["q"] = "focus"
+            res = requests.get(url, params=params, verify=False, timeout=20)
+            res.raise_for_status()
+            data = res.json()
+
+        hits = data.get("hits", [])
+        if not hits:
+            raise RuntimeError(f"Nessun video trovato su Pixabay per '{query_scelta}'.")
+
+        random.shuffle(hits)
+        clip_scelta = hits[0]
+        query_usata = query_scelta
+
+    # Estrazione URL del formato video (medium / large / small)
+    videos = clip_scelta.get("videos", {})
+    video_url = None
+    for fmt in ["medium", "large", "small"]:
+        if fmt in videos and videos[fmt].get("url"):
+            video_url = videos[fmt]["url"]
+            break
+
+    if not video_url:
+        raise RuntimeError("Nessun URL video valido nei risultati Pixabay.")
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_clip_path = os.path.join(temp_dir, f"raw_clip_{timestamp}.mp4")
+
+    print(f"⬇️ Download clip Pixabay #{clip_scelta.get('id')} ({clip_scelta.get('duration')}s) - Tag: {clip_scelta.get('tags')}...")
+    with requests.get(video_url, stream=True, verify=False, timeout=45) as r:
+        r.raise_for_status()
+        with open(temp_clip_path, "wb") as f:
+            for chunk in r.iter_content(chunk_size=65536):
+                if chunk:
+                    f.write(chunk)
+
+    print(f"✅ Clip grezza salvata: {temp_clip_path} ({round(os.path.getsize(temp_clip_path)/(1024*1024), 2)} MB)")
+    return temp_clip_path, query_usata
+
+
+# --- 7. COMPOSIZIONE GRAFICA D'ELITE: SCRITTA IN ALTO & BANNER IN BASSO ---
+def genera_overlay_grafico(categoria, frase, autore, output_png_path):
+    """
+    Crea un frame PNG trasparente a 1080x1920 con:
+    - CARD CITAZIONE IN ALTO (Y: 90 - ~550):
+        * Card Frosted Glass con bordo oro (#FFD700)
+        * Categoria in oro, testo da Colonna F bianco con ombra, autore in oro
+    - CENTRO DELLO SCHERMO COMPLETAMENTE LIBERO (Y: ~550 - 1650):
+        * Oltre 1000px liberi per dare massimo risalto e primo piano all'azione scenica del video!
+    - BANNER PROFILO IN BASSO (Y: 1660 - 1820):
+        * Avatar reale faccia.png con maschera circolare antialias e bordo oro
+        * Nome 'Antonio Giancani' e tagline 'MINDSET • STRATEGIA • CRESCITA'
+    """
+    W, H = 1080, 1920
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(overlay)
+
+    font_name = get_font(36, bold=True)
+    font_sub = get_font(21, bold=False)
+    font_cat = get_font(32, bold=True)
+    font_author = get_font(30, bold=True)
+
+    card_left = 60
+    card_right = W - 60
+
+    # 1. CARD CITAZIONE IN ALTO
+    frase_pulita = frase.strip().strip('"').strip('“').strip('”')
+    if len(frase_pulita) > 120:
+        font_size = 38
+        line_w = 26
+        line_h = 52
+    elif len(frase_pulita) > 70:
+        font_size = 44
+        line_w = 24
+        line_h = 58
+    else:
+        font_size = 50
+        line_w = 22
+        line_h = 66
+
+    font_quote = get_font(font_size, bold=True)
+    lines = textwrap.wrap(f"“{frase_pulita}”", width=line_w)
+
+    h_quote = len(lines) * line_h + 160
+    q_top = 90
+    q_bottom = q_top + h_quote
+
+    # Card frosted glass per la citazione in alto
+    draw.rounded_rectangle(
+        [(card_left, q_top), (card_right, q_bottom)],
+        radius=34,
+        fill=(10, 15, 24, 225),
+        outline="#FFD700",
+        width=3
+    )
+
+    # Categoria in Oro
+    draw.text((W // 2, q_top + 40), f"◆ {categoria.upper()} ◆", font=font_cat, fill="#FFD700", anchor="mt")
+
+    # Righe Frase
+    curr_y = q_top + 115
+    for l in lines:
+        draw.text((W // 2 + 2, curr_y + 2), l, font=font_quote, fill=(0, 0, 0, 180), anchor="mt")
+        draw.text((W // 2, curr_y), l, font=font_quote, fill="#FFFFFF", anchor="mt")
+        curr_y += line_h
+
+    # Autore Citazione
+    curr_y += 15
+    draw.text((W // 2, curr_y), f"— {autore} —", font=font_author, fill="#FFD700", anchor="mt")
+
+    # 2. BANNER PROFILO IN BASSO
+    banner_h = 160
+    banner_y = H - banner_h - 100  # Y: 1660 a 1820 (zona protetta sopra bordo inferiore)
+
+    draw.rounded_rectangle(
+        [(card_left, banner_y), (card_right, banner_y + banner_h)],
+        radius=30,
+        fill=(10, 15, 24, 225),
+        outline="#FFD700",
+        width=2
+    )
+
+    # Avatar circolare faccia.png
+    avatar_size = 116
+    avatar_x = card_left + 22
+    avatar_y = banner_y + (banner_h - avatar_size) // 2
+
+    if os.path.exists(LOGO_PATH):
+        try:
+            face_img = Image.open(LOGO_PATH).convert("RGBA").resize((avatar_size, avatar_size), Image.Resampling.LANCZOS)
+            mask = Image.new("L", (avatar_size, avatar_size), 0)
+            dmask = ImageDraw.Draw(mask)
+            dmask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+            overlay.paste(face_img, (avatar_x, avatar_y), mask)
+            # Anello dorato intorno all'avatar
+            draw.ellipse((avatar_x - 2, avatar_y - 2, avatar_x + avatar_size + 2, avatar_y + avatar_size + 2), outline="#FFD700", width=3)
+        except Exception as e:
+            print(f"⚠️ Errore caricamento avatar faccia: {e}")
+
+    # Testi nel Banner in Basso
+    text_x = avatar_x + avatar_size + 24
+    draw.text((text_x, banner_y + 40), "Antonio Giancani", font=font_name, fill="#FFFFFF")
+    draw.text((text_x, banner_y + 90), "MINDSET • STRATEGIA • CRESCITA", font=font_sub, fill="#FFD700")
+
+    overlay.save(output_png_path, "PNG")
+    print(f"🎨 Overlay d'elite generato (Scritta in ALTO, Banner in BASSO): {output_png_path}")
+    return output_png_path
+
+
+# --- 8. SELEZIONE MUSICA DI SOTTOFONDO ROYALTY-FREE ---
+def scegli_musica_sottofondo():
+    """Seleziona una traccia royalty-free da musica_sottofondo con fallback sicuro."""
+    tracce = [
+        os.path.join(MUSIC_DIR, f)
+        for f in os.listdir(MUSIC_DIR)
+        if f.endswith((".mp3", ".wav")) and os.path.getsize(os.path.join(MUSIC_DIR, f)) > 5000
+    ]
+    if tracce:
+        scelta = random.choice(tracce)
+        print(f"🎶 Musica selezionata: {os.path.basename(scelta)}")
+        return scelta
+    return None
+
+
+# --- 9. MONTAGGIO VIDEO CON LOOP IN REWIND (PING-PONG CONTINUO) ---
+def monta_video_story_completo(raw_clip_path, overlay_png_path, audio_voce_path, output_video_path, bg_music_path=None):
+    """
+    Combina:
+    - Clip video Pixabay con PING-PONG REWIND LOOP (se la clip è più corta della voce,
+      va avanti e poi in reverse all'infinito, creando un loop fluido e continuo senza tagli)
+    - Filtro di scurimento e contrasto
+    - Overlay grafico PIL (Banner in alto + video in primo piano)
+    - Traccia vocale Diego Neural
+    - Traccia musicale di sottofondo ducked (volume 14%)
+    """
+    durata_clip = ottieni_durata_file(raw_clip_path)
+    durata_voce = ottieni_durata_file(audio_voce_path)
+    durata_totale = round(durata_voce + 1.2, 1)
+
+    fade_out_st = max(0.5, durata_totale - 1.5)
+
+    print(f"⏱️ Durata clip originale: {durata_clip}s | Durata narrazione vocale: {durata_totale}s")
+
+    # Verifica se la clip è più breve del tempo totale richiesto
+    serve_rewind_loop = (durata_clip < durata_totale)
+    if serve_rewind_loop:
+        print(f"🔄 [PING-PONG REWIND LOOP ATTIVATO] La clip dura {durata_clip}s (< {durata_totale}s).")
+        print("   Applicazione loop continuo: avanti -> reverse -> avanti per un flusso visivo fluido e ininterrotto!")
+        
+        frames_clip = max(1, int(durata_clip * 30))
+        cycle_frames = frames_clip * 2
+
+        video_filter = (
+            "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
+            "eq=brightness=-0.14:contrast=1.06[v_scaled];"
+            "[v_scaled]split[v_fwd][v_rev_in];"
+            "[v_rev_in]reverse[v_rev];"
+            "[v_fwd][v_rev]concat=n=2:v=1:a=0[v_cycle];"
+            f"[v_cycle]loop=loop=-1:size={cycle_frames}:start=0[vbg];"
+            "[vbg][1:v]overlay=0:0[vout]"
+        )
+    else:
+        print("▶️ Clip sufficientemente lunga, riproduzione standard in avanti.")
+        video_filter = (
+            "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,fps=30,"
+            "eq=brightness=-0.14:contrast=1.06[vbg];"
+            "[vbg][1:v]overlay=0:0[vout]"
+        )
+
     if bg_music_path and os.path.exists(bg_music_path):
-        fade_out_st = max(0.5, durata - 1.2)
         filter_complex = (
-            f"[1:a]volume=1.0[voice];"
-            f"[2:a]volume=0.14,afade=t=in:ss=0:d=0.8,afade=t=out:st={fade_out_st:.2f}:d=1.2[music];"
-            f"[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout];"
-            f"[0:v]{zoom_filter}[vout]"
+            f"[0:v]{video_filter};"
+            "[2:a]volume=1.0[voice];"
+            f"[3:a]volume=0.14,afade=t=in:ss=0:d=1.0,afade=t=out:st={fade_out_st:.2f}:d=1.5[music];"
+            "[voice][music]amix=inputs=2:duration=first:dropout_transition=2[aout]"
         )
         cmd = [
             FFMPEG_EXE, "-y",
-            "-loop", "1", "-i", frame_img_path,
-            "-i", audio_path,
+            "-ss", "0", "-i", raw_clip_path,
+            "-i", overlay_png_path,
+            "-i", audio_voce_path,
             "-i", bg_music_path,
             "-filter_complex", filter_complex,
             "-map", "[vout]", "-map", "[aout]",
-            "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-b:a", "192k",
-            "-t", str(durata),
+            "-t", str(durata_totale),
             output_video_path
         ]
     else:
+        filter_complex = (
+            f"[0:v]{video_filter};"
+            "[2:a]volume=1.0[aout]"
+        )
         cmd = [
             FFMPEG_EXE, "-y",
-            "-loop", "1", "-i", frame_img_path,
-            "-i", audio_path,
-            "-vf", zoom_filter,
-            "-c:v", "libx264", "-tune", "stillimage", "-pix_fmt", "yuv420p",
-            "-c:a", "aac", "-b:a", "192k", "-shortest",
-            "-t", str(durata),
+            "-ss", "0", "-i", raw_clip_path,
+            "-i", overlay_png_path,
+            "-i", audio_voce_path,
+            "-filter_complex", filter_complex,
+            "-map", "[vout]", "-map", "[aout]",
+            "-c:v", "libx264", "-preset", "medium", "-crf", "20", "-pix_fmt", "yuv420p",
+            "-c:a", "aac", "-b:a", "192k",
+            "-t", str(durata_totale),
             output_video_path
         ]
-        
-    subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
+
+    print(f"🎬 Avvio montaggio FFmpeg (1080x1920 @ 30fps, durata: {durata_totale}s)...")
+    res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if res.returncode != 0:
+        err = res.stderr[-800:] if res.stderr else "Errore sconosciuto FFmpeg"
+        raise RuntimeError(f"FFmpeg fallito:\n{err}")
+
+    mb = round(os.path.getsize(output_video_path)/(1024*1024), 2)
+    print(f"✅ Video definitivo renderizzato: {output_video_path} ({mb} MB)")
     return True
 
 
-# --- 9. COPYWRITING FACEBOOK AD ALTO INGAGGIO (EMOJI, SPUNTI, HASHTAG) ---
-def genera_copy_post(row, storia=None):
-    categoria = str(row['Categoria']).upper()
-    frase = row['Frase']
-    autore = row['Autore']
-    
-    intro_map = {
-        "MINDSET": (
-            "🧠 *IL POTERE DELLA MENTE E DELLA VISIONE*",
-            "La differenza tra chi ottiene risultati straordinari e chi si ferma sta nel modo di interpretare le sfide ogni singolo giorno.",
-            "Coltiva abitudini vincenti, allena la tua concentrazione e non permettere al rumore esterno di deviare i tuoi obiettivi."
-        ),
-        "VENDITA": (
-            "💼 *L'ARTE DELLA NEGOZIAZIONE E DEL VALORE*",
-            "Vendere non significa convincere, ma comprendere a fondo le reali esigenze delle persone e offrire la soluzione perfetta con integrità.",
-            "Costruisci relazioni autentiche: la fiducia è la moneta più preziosa nel mercato di oggi."
-        ),
-        "IMMOBILIARE": (
-            "🏛️ *STRATEGIA E VISIONE NEGLI INVESTIMENTI*",
-            "Il valore di una scelta immobiliare non si misura nell'immediato, ma nella capacità di anticipare i trend e creare sicurezza nel tempo.",
-            "Competenza, posizionamento e decisione: questi sono i tre pilastri per chi vuole costruire basi solide."
-        ),
-        "DISCIPLINA": (
-            "⏳ *LA FORZA DELLA COSTANZA QUOTIDIANA*",
-            "La motivazione ti fa partire, ma è solo la disciplina ferrea che ti porta al traguardo.",
-            "Ogni piccolo sforzo ripetuto con perseveranza costruisce il ponte verso i tuoi sogni più grandi."
-        ),
-        "FOCUS": (
-            "🎯 *ELIMINA IL SUPERFLUO, MASSIMIZZA L'IMPATTO*",
-            "In un mondo pieno di distrazioni, la capacità di mantenere l'attenzione sull'essenziale è un autentico superpotere.",
-            "Scegli dove indirizzare la tua energia: i risultati seguiranno la direzione del tuo focus."
-        ),
-        "BUSINESS": (
-            "📈 *ECCELLENZA, VELOCITÀ ED ESECUZIONE*",
-            "Le idee senza azione rimangono illusioni. Nel business vince chi sa decidere con rapidità ed eseguire con precisione millimetrica.",
-            "Punta sempre all'eccellenza e fai parlare la solidità dei tuoi risultati."
-        )
-    }
-    
-    titolo_box, punto1, punto2 = intro_map.get(categoria, (
-        "✨ *ISPIRAZIONE & STRATEGIA DEL GIORNO*",
-        "Ogni traguardo comincia con la decisione coraggiosa di fare il primo passo e perseverare.",
-        "Metti energia, dedizione e professionalità in tutto ciò che fai."
-    ))
-    
-    sezione_storia = f"\n🎙️ *LA STORIA NEL VIDEO:*\n_{storia}_\n" if storia else ""
-    
-    caption = f"""💎 {categoria} DEL GIORNO 💎
+# --- 10. GESTIONE ORARI LIBERI DA PALINSESTO ---
+def ottieni_prossimo_orario_libero():
+    """
+    Calcola la prossima finestra oraria ottimale priva di conflitti
+    (distante da 07:00 storie YouTube e 19:00-01:00 diretta streaming serale).
+    """
+    now = datetime.datetime.now()
+    orari_dt = []
+    for h_str in ORARI_LIBERI:
+        h, m = map(int, h_str.split(":"))
+        dt = now.replace(hour=h, minute=m, second=0, microsecond=0)
+        if dt > now:
+            orari_dt.append(dt)
 
-«{frase}»
-— {autore} —
-{sezione_storia}
-────────────────────────
-{titolo_box}
-────────────────────────
-🔹 {punto1}
-🔹 {punto2}
+    if not orari_dt:
+        h, m = map(int, ORARI_LIBERI[0].split(":"))
+        prossimo = (now + datetime.timedelta(days=1)).replace(hour=h, minute=m, second=0, microsecond=0)
+    else:
+        prossimo = min(orari_dt)
 
-💡 *REGOLE CHIAVE:*
-1️⃣ Azione costante e zero scuse
-2️⃣ Focus sui risultati che contano davvero
-3️⃣ Crescita e perfezionamento continuo
-
-📲 *Guarda il Reels, lascia un mi piace e salva il post* per ritrovarlo ogni volta che hai bisogno della giusta carica!
-💬 Scrivi nei commenti la tua riflessione su questa frase.
-
-━━━━━━━━━━━━━━━━━━━━
-👉 Riflessione e strategia a cura di:
-⭐ ANTONIO GIANCANI ⭐
-━━━━━━━━━━━━━━━━━━━━
-
-#Mindset #CrescitaPersonale #Successo #Business #Focus #Disciplina #Leadership #MotivazioneDelGiorno #Strategia #Ispirazione #AntonioGiancani"""
-    return caption
+    minuti_attesa = int((prossimo - now).total_seconds() // 60)
+    return prossimo.strftime("%H:%M"), minuti_attesa
 
 
-# --- 9. INVIO VIDEO CON TASTIERA DI APPROVAZIONE TELEGRAM ---
-def invia_video_telegram(video_path, caption_text, item_id):
-    print("📲 Invio VIDEO ANIMATO con tastiera di approvazione su Telegram...", flush=True)
+# --- 11. INVIO SU TELEGRAM CON APPROVAZIONE FACEBOOK ---
+def invia_video_telegram(video_path, item, query_usata, orario_suggerito):
+    """
+    Invia il video a Telegram con didascalia completa e bottoni interattivi.
+    Rispetta rigorosamente la chiusura '— Immobiliare Giancani'.
+    """
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("⚠️ Credenziali Telegram mancanti, invio saltato.")
+        return False
+
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendVideo"
+    item_id = item.get("id", "0")
+
+    caption = (
+        f"🎬 *NUOVO VIDEO SHORTS / STORIES (1080x1920)*\n"
+        f"⭐ *ANTONIO GIANCANI*\n\n"
+        f"🏷️ *Categoria:* #{item.get('categoria', 'Mindset')}\n"
+        f"📖 *Frase (Colonna F):*\n_{item.get('colonna_f', '')}_\n\n"
+        f"🎙️ *Voce:* Diego Neurale (Lettura & Meditazione)\n"
+        f"🎵 *Audio:* Musica di sottofondo Royalty-Free\n"
+        f"🖼️ *Layout:* Scritta in ALTO, Banner in BASSO (Centro libero per il video)\n"
+        f"🔄 *Effetto Video:* Loop in Rewind Continuo (Nessun salto visivo)\n"
+        f"⏰ *Fascia Oraria Consigliata:* {orario_suggerito} (Libera da live)\n\n"
+        f"🔒 *Stato Facebook:* Pronto e in attesa del tuo OK\n\n"
+        f"━━━━━━━━━━━━━━━━━━━━\n"
+        f"— Immobiliare Giancani"
+    )
+
     inline_keyboard = {
         "inline_keyboard": [
             [
-                {"text": "✅ APPROVA E PUBBLICA VIDEO SU FACEBOOK", "callback_data": f"PUBBLICA_FB_VID_{item_id}"},
+                {"text": "✅ APPROVA PER PUBBLICAZIONE SU FACEBOOK", "callback_data": f"APPROVA_FB_{item_id}"}
             ],
             [
-                {"text": "🔄 RIGENERA CON ALTRA CITAZIONE", "callback_data": "RIGENERA_RANDOM"},
-                {"text": "❌ SCARTA", "callback_data": "SCARTA"}
+                {"text": "🔄 RIGENERA CON ALTRA CLIP", "callback_data": f"RIGENERA_{item_id}"},
+                {"text": "❌ SCARTA", "callback_data": f"SCARTA_{item_id}"}
             ]
         ]
     }
-    
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendVideo"
-    
-    # Limite Telegram per didascalie video: massimo 1024 caratteri
-    if len(caption_text) > 750:
-        testo_troncato = caption_text[:750].rsplit("\n", 1)[0]
-        caption_telegram = (
-            f"🎬 *NUOVO REELS (Colonna F)*\n\n"
-            f"{testo_troncato}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n"
-            f"👉 Strategia a cura di:\n"
-            f"⭐ *ANTONIO GIANCANI* ⭐\n"
-            f"━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"👆 *Clicca in basso per approvare e pubblicare!*"
-        )
-    else:
-        caption_telegram = (
-            f"🎬 *NUOVO REELS (Colonna F)*\n\n"
-            f"{caption_text}\n\n"
-            f"👆 *Clicca in basso per approvare e pubblicare!*"
-        )
 
     with open(video_path, "rb") as vf:
         files = {"video": vf}
         data = {
             "chat_id": TELEGRAM_CHAT_ID,
-            "caption": caption_telegram,
+            "caption": caption,
             "parse_mode": "Markdown",
             "reply_markup": json.dumps(inline_keyboard)
         }
-        res = requests.post(url, data=data, files=files, timeout=60, verify=False)
-        
+        res = requests.post(url, data=data, files=files, timeout=120, verify=False)
+
     if res.status_code == 200:
-        print("✅ Video Reels inviato con successo su Telegram!", flush=True)
+        print("✅ Video consegnato con successo su Telegram!")
         return True
     else:
-        print(f"❌ Errore invio Telegram ({res.status_code}): {res.text}", flush=True)
-        return False
-
-
-# --- 10. PUBBLICAZIONE VIDEO SU FACEBOOK GRAPH API CON DIAGNOSI AUTOMATICA ---
-def ottieni_page_token_effettivo(token_base, page_id_target):
-    """Verifica se il token è di pagina o utente; se utente, estrae il token specifico della pagina."""
-    if not token_base:
-        return None
-    try:
-        url_me = f"https://graph.facebook.com/v19.0/me?access_token={token_base}&fields=id,name,category"
-        r_me = requests.get(url_me, timeout=15, verify=False)
-        d_me = r_me.json()
-        
-        if "category" in d_me and (str(d_me.get("id")) == str(page_id_target) or not page_id_target):
-            return token_base # È già un Page Access Token
-            
-        # È un User Token: cerchiamo nelle pagine gestite
-        url_acc = f"https://graph.facebook.com/v19.0/me/accounts?access_token={token_base}&fields=id,name,access_token"
-        r_acc = requests.get(url_acc, timeout=15, verify=False)
-        d_acc = r_acc.json().get("data", [])
-        for p in d_acc:
-            if str(p.get("id")) == str(page_id_target) or not page_id_target:
-                print(f"  🎯 Page Access Token rilevato per la Pagina: {p.get('name')} (ID: {p.get('id')})", flush=True)
-                return p.get("access_token")
-        if d_acc:
-            return d_acc[0].get("access_token")
-    except Exception as e:
-        print(f"  ⚠️ Verifica token preliminare: {e}", flush=True)
-    return token_base
-
-
-def pubblica_video_facebook(video_path, caption):
-    id_sicuro = str(PAGE_ID)[:5] if PAGE_ID else "NESSUN_ID"
-    token_attivo = FACEBOOK_TOKEN
-    print(f"🚀 Avvio Pubblicazione Video su Facebook (Page ID: {id_sicuro}... Token Configurato: {bool(token_attivo)})", flush=True)
-    
-    if not PAGE_ID or not token_attivo:
-        msg_err = "⚠️ *Pubblicazione Facebook Saltata:* `FACEBOOK_PAGE_ID` o `FACEBOOK_TOKEN` non impostati nei Secrets di GitHub."
-        print(msg_err, flush=True)
-        invia_notifica_errore_fb(msg_err)
-        return False
-
-    # Estrazione o verifica Page Token
-    token_da_usare = ottieni_page_token_effettivo(token_attivo, PAGE_ID)
-    
-    try:
-        url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/videos"
-        with open(video_path, "rb") as vf:
-            files = {'source': ('video_reels_mindset.mp4', vf)}
-            data = {'description': caption, 'access_token': token_da_usare}
-            r = requests.post(url, files=files, data=data, timeout=180, verify=False)
-            res_json = r.json()
-            
-            if r.status_code == 200 and "id" in res_json:
-                vid_id = res_json.get("id")
-                print(f"✅ Video Reels pubblicato con successo su Facebook! (Video ID: {vid_id})", flush=True)
-                # Notifica Telegram di successo
-                invia_notifica_successo_fb(vid_id)
-                return True
-            else:
-                err = res_json.get("error", {})
-                err_code = err.get("code", r.status_code)
-                err_sub = err.get("error_subcode", "")
-                err_msg = err.get("message", r.text)
-                
-                # Diagnosi specifica del motivo del fallimento
-                if err_code == 190:
-                    diagnosi = "🔴 *TOKEN SCADUTO O NON VALIDO* (Code 190)\nIl token di accesso Facebook è scaduto oppure è stato revocato."
-                elif err_code == 200:
-                    diagnosi = "🟠 *PERMESSI INSUFFICIENTI* (Code 200)\nIl token non ha i permessi `pages_manage_posts` o `publish_video` sulla Pagina."
-                elif err_code == 100:
-                    diagnosi = "🟡 *PARAMETRO O ID NON VALIDO* (Code 100)\nL'ID Pagina fornito non corrisponde o il formato video non è stato accettato."
-                else:
-                    diagnosi = f"⚠️ *ERRORE GRAPH API* (Code {err_code}, Sub: {err_sub})"
-                    
-                msg_completo = (
-                    f"❌ *MANCATA PUBBLICAZIONE AUTOMATICA SU FACEBOOK*\n\n"
-                    f"{diagnosi}\n\n"
-                    f"📝 *Dettaglio Meta:* _{err_msg}_\n\n"
-                    f"🆔 *Page ID Target:* `{PAGE_ID}`\n\n"
-                    f"💡 *Come Correggere:*\n"
-                    f"1. Apri *Meta Graph API Explorer*\n"
-                    f"2. Seleziona la Pagina *Immobiliare Giancani* in 'User or Page'\n"
-                    f"3. Spunta i permessi: `pages_manage_posts`, `pages_read_engagement`, `publish_video`\n"
-                    f"4. Clicca *Generate Access Token* e aggiorna il Secret `FACEBOOK_TOKEN` su GitHub."
-                )
-                print(f"❌ Errore API Video Facebook: {err_msg}", flush=True)
-                invia_notifica_errore_fb(msg_completo)
-                return False
-    except Exception as e:
-        msg_exc = f"❌ *Eccezione durante la connessione a Facebook Graph API:*\n`{str(e)}`"
-        print(msg_exc, flush=True)
-        invia_notifica_errore_fb(msg_exc)
+        print(f"❌ Errore invio Telegram ({res.status_code}): {res.text}")
         return False
 
 
 def invia_notifica_telegram(messaggio_md):
-    """Invia tempestivamente su Telegram un avviso di sistema."""
-    if not TELEGRAM_TOKEN or not TELEGRAM_CHAT_ID:
+    """Invia un messaggio di notifica su Telegram."""
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         return
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": f"{messaggio_md}\n\n━━━━━━━━━━━━━━━━━━━━\n⭐ *Antonio Giancani* ⭐",
+        "text": f"{messaggio_md}\n\n━━━━━━━━━━━━━━━━━━━━\n— Immobiliare Giancani",
         "parse_mode": "Markdown"
     }
     try:
@@ -731,219 +649,163 @@ def invia_notifica_telegram(messaggio_md):
         pass
 
 
-def invia_notifica_errore_fb(messaggio_md):
-    invia_notifica_telegram(messaggio_md)
-
-
-def invia_notifica_successo_fb(video_id):
-    msg = f"🎉 *VIDEO PUBBLICATO CON SUCCESSO SU FACEBOOK!*\n\n📹 *Video ID:* `{video_id}`\n🌐 Il video Reels è ora online sulla Pagina Facebook."
-    invia_notifica_telegram(msg)
-
-
-# --- 11. PUBBLICAZIONE REELS SU INSTAGRAM GRAPH API ---
-def ottieni_instagram_account_id(token, page_id):
-    """Rileva l'ID dell'account Instagram Business o Creator collegato alla Pagina Facebook."""
-    ig_env = os.environ.get("INSTAGRAM_ACCOUNT_ID")
-    if ig_env:
-        return ig_env.strip()
-    try:
-        url = f"https://graph.facebook.com/v19.0/{page_id}?fields=instagram_business_account&access_token={token}"
-        r = requests.get(url, timeout=15, verify=False)
-        data = r.json()
-        if "instagram_business_account" in data and data["instagram_business_account"].get("id"):
-            ig_id = data["instagram_business_account"]["id"]
-            print(f"  📸 Account Instagram Business collegato rilevato: ID {ig_id}", flush=True)
-            return ig_id
-    except Exception as e:
-        print(f"  ⚠️ Rilevamento Instagram account: {e}", flush=True)
-    return None
-
-
-def pubblica_reels_instagram(video_path, caption):
-    """Pubblica automaticamente il video come Reels su Instagram tramite la Graph API di Meta (Resumable Upload)."""
-    print("\n🚀 Avvio Pubblicazione Automatica Reels su Instagram...", flush=True)
-    
-    token_attivo = FACEBOOK_TOKEN
-    if not PAGE_ID or not token_attivo:
-        print("ℹ️ Pubblicazione Instagram saltata: Token o Page ID non configurati.", flush=True)
-        return False
-        
-    token_da_usare = ottieni_page_token_effettivo(token_attivo, PAGE_ID)
-    ig_id = ottieni_instagram_account_id(token_da_usare, PAGE_ID)
-    
-    if not ig_id:
-        msg_no_ig = (
-            "ℹ️ *PUBBLICAZIONE INSTAGRAM IN ATTESA DI COLLEGAMENTO*\n\n"
-            "Il video è stato pubblicato su Facebook. Per pubblicare automaticamente anche su *Instagram*:\n"
-            "1. Accedi a *Meta Business Suite* (o impostazioni della Pagina Facebook).\n"
-            "2. Vai su *Impostazioni -> Account collegati -> Instagram*.\n"
-            "3. Connetti il tuo profilo Instagram (Business o Creator).\n\n"
-            "Non appena collegato, il bot pubblicherà in contemporanea su entrambi i canali!"
-        )
-        print(f"ℹ️ Nessun account Instagram Business collegato alla Pagina Facebook {PAGE_ID}.", flush=True)
-        invia_notifica_telegram(msg_no_ig)
+# --- 12. PUBBLICAZIONE FACEBOOK GRAPH API ---
+def pubblica_su_facebook(video_path, caption):
+    """Pubblica automaticamente il video sulla Pagina Facebook."""
+    print(f"🚀 [FACEBOOK] Pubblicazione automatica del video sulla Pagina ID: {FACEBOOK_PAGE_ID}...")
+    if not FACEBOOK_PAGE_ID or not FACEBOOK_TOKEN:
+        print("❌ Impossibile pubblicare su Facebook: token o Page ID mancante.")
         return False
 
+    url = f"https://graph.facebook.com/v19.0/{FACEBOOK_PAGE_ID}/videos"
     try:
-        # 1. Inizializzazione container multimediale Resumable per Reels
-        url_container = f"https://graph.facebook.com/v19.0/{ig_id}/media"
-        file_size = os.path.getsize(video_path)
-        
-        payload_container = {
-            "media_type": "REELS",
-            "caption": caption,
-            "upload_type": "resumable",
-            "access_token": token_da_usare
-        }
-        res_cont = requests.post(url_container, data=payload_container, timeout=30, verify=False).json()
-        
-        if "id" not in res_cont or "uri" not in res_cont:
-            err_msg = res_cont.get("error", {}).get("message", str(res_cont))
-            print(f"❌ Errore creazione container Instagram Reels: {err_msg}", flush=True)
-            invia_notifica_telegram(f"⚠️ *Errore Inizializzazione Instagram Reels:*\n_{err_msg}_")
-            return False
-            
-        container_id = res_cont["id"]
-        upload_uri = res_cont["uri"]
-        print(f"  📦 Container Instagram creato con successo (ID: {container_id})", flush=True)
-        
-        # 2. Caricamento binario del video
-        headers_upload = {
-            "Authorization": f"OAuth {token_da_usare}",
-            "offset": "0",
-            "file_size": str(file_size)
-        }
         with open(video_path, "rb") as vf:
-            r_upload = requests.post(upload_uri, headers=headers_upload, data=vf, timeout=180, verify=False)
-            
-        if r_upload.status_code not in [200, 201]:
-            print(f"❌ Errore upload dati video su Instagram: {r_upload.text}", flush=True)
-            return False
-            
-        print("  ⬆️ Video trasferito sui server di Instagram. Elaborazione in corso...", flush=True)
-        
-        # 3. Attesa elaborazione container da parte di Meta
-        import time
-        pronto = False
-        for tentativo in range(15): # max 75 secondi
-            time.sleep(5)
-            url_status = f"https://graph.facebook.com/v19.0/{container_id}?fields=status_code&access_token={token_da_usare}"
-            st_res = requests.get(url_status, timeout=15, verify=False).json()
-            stato = st_res.get("status_code")
-            if stato == "FINISHED":
-                pronto = True
-                break
-            elif stato == "ERROR":
-                print(f"❌ Errore elaborazione interna Instagram: {st_res}", flush=True)
+            files = {"source": (os.path.basename(video_path), vf)}
+            data = {"description": caption, "access_token": FACEBOOK_TOKEN}
+            r = requests.post(url, files=files, data=data, timeout=180, verify=False)
+            res = r.json()
+            if r.status_code == 200 and "id" in res:
+                video_id = res['id']
+                print(f"🎉 Video pubblicato con successo su FACEBOOK! ID: {video_id}")
+                msg_tg = (
+                    f"🎉 *VIDEO PUBBLICATO CON SUCCESSO SU FACEBOOK!*\n\n"
+                    f"📹 *Video ID:* `{video_id}`\n"
+                    f"🌐 Il video Reels / Shorts è ora online sulla Pagina Facebook."
+                )
+                invia_notifica_telegram(msg_tg)
+                return True
+            else:
+                print(f"❌ Errore pubblicazione Facebook: {res}")
                 return False
-                
-        if not pronto:
-            print("⚠️ Timeout elaborazione video su Instagram.", flush=True)
-            return False
-            
-        # 4. Pubblicazione definitiva del Reels su Instagram
-        url_publish = f"https://graph.facebook.com/v19.0/{ig_id}/media_publish"
-        pub_res = requests.post(url_publish, data={"creation_id": container_id, "access_token": token_da_usare}, timeout=30, verify=False).json()
-        
-        if "id" in pub_res:
-            ig_media_id = pub_res["id"]
-            print(f"✅ Video Reels pubblicato con successo su INSTAGRAM! (Media ID: {ig_media_id})", flush=True)
-            invia_notifica_telegram(f"🎉 *REELS PUBBLICATO CON SUCCESSO SU INSTAGRAM!*\n\n📸 *Instagram Media ID:* `{ig_media_id}`\n🌐 Il Reels è ora online sul tuo profilo Instagram.")
-            return True
-        else:
-            print(f"❌ Errore pubblicazione Instagram: {pub_res}", flush=True)
-            return False
-            
     except Exception as e:
-        print(f"❌ Eccezione durante pubblicazione Instagram: {e}", flush=True)
+        print(f"❌ Eccezione Facebook: {e}")
         return False
 
 
-def pubblica_automaticamente_tutto(video_path, caption):
-    """Pubblica automaticamente ogni video generato sia su Facebook che su Instagram."""
-    print("\n" + "="*60, flush=True)
-    print("🚀 AVVIO PUBBLICAZIONE AUTOMATICA (FACEBOOK & INSTAGRAM)", flush=True)
-    print("="*60, flush=True)
-    
-    # 1. Pubblicazione su Pagina Facebook
-    fb_ok = pubblica_video_facebook(video_path, caption)
-    
-    # 2. Pubblicazione su Instagram Reels
-    ig_ok = pubblica_reels_instagram(video_path, caption)
-    
-    return fb_ok or ig_ok
-
-
-# --- FLUSSO PRINCIPALE ---
-async def main():
-    print("="*60, flush=True)
-    print("🎬 AVVIO BOT VIDEO REELS (PUBBLICAZIONE AUTOMATICA FB & IG)", flush=True)
-    print("⭐ Personal Branding: Antonio Giancani", flush=True)
-    print("="*60, flush=True)
-    
-    import argparse
-    parser = argparse.ArgumentParser(description="Bot Video Reels da Colonna F con Pubblicazione Automatica FB & IG")
-    parser.add_argument("--id", type=str, default=None, help="ID citazione specifico")
-    parser.add_argument("--voice", type=str, default="it-IT-DiegoNeural", help="Voce neurale italiana (es. it-IT-DiegoNeural)")
-    parser.add_argument("--auto-publish", action="store_true", default=True, help="Pubblicazione automatica attiva (default: True)")
-    parser.add_argument("--manual-only", action="store_true", help="Disattiva la pubblicazione automatica e richiede approvazione")
-    args = parser.parse_args()
-    
-    pubblica_in_automatico = not args.manual_only
-    voce_selezionata = args.voice
-    
-    # 1. Estrazione rigorosa da Colonna F
-    row = get_random_quote(args.id)
-    if not row:
-        print("❌ Nessuna riga disponibile nel CSV.")
+# --- 13. PULIZIA FILE TEMPORANEI ---
+def pulisci_cartella_temp(temp_dir=TEMP_DIR):
+    """Rimuove tutti i file temporanei grezzi in ./temp/."""
+    print("🧹 Pulizia file temporanei ./temp/...")
+    if not os.path.exists(temp_dir):
         return
+    for f in os.listdir(temp_dir):
+        p = os.path.join(temp_dir, f)
+        try:
+            if os.path.isfile(p):
+                os.remove(p)
+        except Exception:
+            pass
+
+
+# --- 14. FLUSSO PRINCIPALE COMPLETO ---
+async def genera_video_potenziato(id_richiesto=None, query_pexels=None, video_id=None, publish_fb=True):
+    """Esegue l'intero ciclo di generazione potenziata con pubblicazione automatica su Facebook."""
+    print("=" * 70)
+    print("🎬 AVVIO BOT SHORTS / STORIES — ANTONIO GIANCANI (AUTOMATICO)")
+    print("⭐ Scritta in Alto + Diego Suggeritore + Video in Primo Piano + Facebook Online")
+    print("=" * 70)
+
+    # 1. Estrazione da Colonna F
+    item = estrai_frase_colonna_f(CSV_FILE, id_richiesto=id_richiesto)
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    temp_clip_path = None
+
+    try:
+        # 2. Generazione testo e voce di Diego narrante (suggeritore di un'idea)
+        testo_narrato = genera_meditazione(item["categoria"], item["frase"], item["autore"])
+        temp_audio_path = os.path.join(TEMP_DIR, f"voice_{timestamp}.mp3")
+        await sintetizza_audio_voce(testo_narrato, temp_audio_path, voce="it-IT-DiegoNeural")
+
+        # 3. Download clip da Pixabay API (tramite tema oppure ID/Link specifico)
+        temp_clip_path, query_usata = cerca_e_scarica_clip_pixabay(query=query_pexels, video_id=video_id, temp_dir=TEMP_DIR)
+
+        # 4. Generazione Overlay Grafico con Scritta in ALTO e Banner Profilo in BASSO
+        temp_overlay_path = os.path.join(TEMP_DIR, f"overlay_{timestamp}.png")
+        genera_overlay_grafico(item["categoria"], item["frase"], item["autore"], temp_overlay_path)
+
+        # 5. Selezione Musica Royalty-Free
+        bg_music = scegli_musica_sottofondo()
+
+        # 6. Montaggio Video Definitivo con Loop in Rewind se necessario
+        output_filename = f"story_giancani_{timestamp}.mp4"
+        output_path = os.path.join(OUTPUT_DIR, output_filename)
+        monta_video_story_completo(temp_clip_path, temp_overlay_path, temp_audio_path, output_path, bg_music_path=bg_music)
+
+        # 7. Calcolo prossimo orario libero
+        prossimo_slot, minuti = ottieni_prossimo_orario_libero()
+        print(f"⏰ Orario libero da palinsesto live: {prossimo_slot} (tra {minuti} min)")
+
+        # 8. Invio immediato su Telegram per archivio e notifica
+        invia_video_telegram(output_path, item, query_usata, prossimo_slot)
+
+        # 9. Pubblicazione Automatica su Facebook
+        if publish_fb:
+            print("\n🚀 Avvio pubblicazione automatica su Facebook in corso...")
+            copy_fb = (
+                f"💎 {item.get('categoria', 'MINDSET').upper()} DEL GIORNO 💎\n\n"
+                f"«{item['frase']}»\n"
+                f"— {item['autore']} —\n\n"
+                f"🎙️ {testo_narrato}\n\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n"
+                f"👉 Riflessione a cura di:\n"
+                f"⭐ ANTONIO GIANCANI ⭐\n"
+                f"━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"— Immobiliare Giancani"
+            )
+            pubblica_su_facebook(output_path, copy_fb)
+        else:
+            print("\n🔒 Pubblicazione Facebook disattivata via parametro.")
+
+        return output_path
+
+    finally:
+        # 10. Pulizia cartella temp
+        pulisci_cartella_temp(TEMP_DIR)
+        print("=" * 70)
+        print("🏁 PROCESSO COMPLETATO CON SUCCESSO — Immobiliare Giancani")
+        print("=" * 70)
+
+
+def loop_orari_liberi():
+    """
+    Esegue il bot ad anello sincronizzato sugli orari liberi:
+    08:30, 12:30, 16:30 ogni giorno.
+    """
+    print("=" * 70)
+    print("⏰ AVVIO SCHEDULER ORARI LIBERI: 08:30 | 12:30 | 16:30")
+    print("=" * 70)
+    while True:
+        now = datetime.datetime.now()
+        ora_corrente = now.strftime("%H:%M")
         
-    item_id = row["ID"]
-    categoria = row["Categoria"]
-    frase = row["Frase"]
-    autore = row["Autore"]
-    testo_colonna_f = row["Colonna_F"]
-    
-    print(f"\n--- 🎞️ Elaborazione Reels #{item_id} [{categoria}] ---", flush=True)
-    
-    # File di output
-    bg_file = os.path.join(WORK_DIR, f"bg_{item_id}.jpg")
-    frame_file = os.path.join(WORK_DIR, f"frame_{item_id}.png")
-    audio_file = os.path.join(WORK_DIR, f"audio_{item_id}.mp3")
-    video_file = os.path.join(WORK_DIR, f"reels_mindset_{item_id}.mp4")
-    
-    # 2. Generazione Sfondo AI tematico
-    get_ai_background(categoria, bg_file, seed=int(item_id)*13 + 7)
-    
-    # 3. Composizione Grafica con Badge e Tipografia Oro
-    print("  🖼️ Composizione grafica con badge personalizzato...", flush=True)
-    componi_frame_grafico(bg_file, frase, autore, frame_file, categoria=categoria)
-    
-    # 4. Generazione Micro-Storia Narrata Sincronizzata (Diego racconta una storia mentre sullo schermo si legge la frase)
-    storia_vocale = genera_micro_storia(categoria, frase, autore)
-    print(f"  🎙️ Narrazione Storytelling ({voce_selezionata}): \"{storia_vocale}\"", flush=True)
-    await genera_audio_scena(storia_vocale, audio_file, voce=voce_selezionata)
-    
-    # 5. Selezione Musica di Sottofondo (CC0 No-Copyright) & Montaggio Video Animato
-    musica_bg = scegli_musica_sottofondo(categoria)
-    print("  🎥 Rendering video animato in formato Reels 9:16 con mix musicale...", flush=True)
-    crea_video_animato(frame_file, audio_file, video_file, bg_music_path=musica_bg)
-    print(f"  ✅ Video Reels generato: {video_file} ({round(os.path.getsize(video_file)/1024/1024, 2)} MB)", flush=True)
-    
-    # 6. Generazione Copy Facebook con Personal Branding Antonio Giancani
-    caption_fb = genera_copy_post(row, storia=storia_vocale)
-    
-    # 7. Invio su Telegram con Bottoni Interattivi
-    invia_video_telegram(video_file, caption_fb, item_id)
-    
-    # 8. Pubblicazione Automatica su Facebook & Instagram ogni volta che viene generato
-    if pubblica_in_automatico:
-        pubblica_automaticamente_tutto(video_file, caption_fb)
+        if ora_corrente in ORARI_LIBERI and now.second < 30:
+            print(f"\n🎯 [ORARIO LIBERO SCATTATO: {ora_corrente}] Generazione e pubblicazione automatica video...")
+            asyncio.run(genera_video_potenziato(publish_fb=True))
+            time.sleep(60)
         
-    print("\n" + "="*60, flush=True)
-    print(f"⭐ VIDEO REELS #{item_id} INVIATO CON SUCCESSO — ANTONIO GIANCANI ⭐", flush=True)
-    print("="*60, flush=True)
+        time.sleep(15)
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import argparse
+    parser = argparse.ArgumentParser(description="Bot Video Shorts/Stories Antonio Giancani (Automatico su Facebook)")
+    parser.add_argument("--id", type=str, default=None, help="ID citazione specifico da Mindset.csv")
+    parser.add_argument("--query", "--tema", type=str, default=None, help="Tema o parola chiave del video su Pixabay (es. mare, lusso, skyline)")
+    parser.add_argument("--video-id", "--url", type=str, default=None, help="ID o Link specifico del video da Pixabay")
+    parser.add_argument("--no-publish-fb", "--solo-telegram", action="store_true", help="Invia solo su Telegram senza pubblicare su Facebook")
+    parser.add_argument("--auto-publish", action="store_true", default=True, help="Pubblicazione automatica su Facebook (attiva di default)")
+    parser.add_argument("--schedule", action="store_true", help="Attiva demone scheduler sugli orari liberi (08:30, 12:30, 16:30)")
+
+    args = parser.parse_args()
+    pubblica_fb = not args.no_publish_fb
+
+    if args.schedule:
+        loop_orari_liberi()
+    else:
+        asyncio.run(genera_video_potenziato(
+            id_richiesto=args.id,
+            query_pexels=args.query,
+            video_id=args.video_id,
+            publish_fb=pubblica_fb
+        ))
