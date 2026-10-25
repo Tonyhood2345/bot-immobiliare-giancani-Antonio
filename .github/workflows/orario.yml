@@ -1,16 +1,28 @@
-name: 🧠 Bot Video Reels Mindset (Antonio Giancani)
+name: 🏢 Bot Video Pillole Immobiliari & Legali (Immobiliare Giancani)
 
 on:
   schedule:
-    # 08:30, 12:30, 16:30 ora italiana (UTC+2 estate / UTC+1 inverno)
+    # 08:30, 12:30, 16:30 ora italiana
     - cron: '30 6 * * *'
     - cron: '30 10 * * *'
     - cron: '30 14 * * *'
   workflow_dispatch:
+    inputs:
+      story_id:
+        description: 'ID specifico della pillola (opzionale da 1 a 50+)'
+        required: false
+        default: ''
+      pubblica_fb:
+        description: 'Pubblica automaticamente su Facebook'
+        required: false
+        default: true
+        type: boolean
 
 jobs:
-  genera_e_pubblica_reels:
+  genera_e_pubblica_pillola:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 📥 Checkout repository
         uses: actions/checkout@v4
@@ -22,17 +34,35 @@ jobs:
 
       - name: 📦 Installa dipendenze di sistema e Python
         run: |
-          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-freefont-ttf
+          sudo apt-get update && sudo apt-get install -y ffmpeg fonts-dejavu-core fonts-freefont-ttf fonts-liberation
           pip install requests pillow edge-tts gtts imageio-ffmpeg urllib3 python-dotenv
 
-      - name: 🎬 Genera Video Reels e Pubblica su Facebook
+      - name: 🎬 Genera Video Pillola Immobiliare e Pubblica
         env:
-          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID }}
-          FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_TOKEN }}
+          FACEBOOK_PAGE_ID_GIANCANI: ${{ secrets.FACEBOOK_PAGE_ID_GIANCANI || secrets.FACEBOOK_PAGE_ID || '234931856561526' }}
+          FACEBOOK_PAGE_ID: ${{ secrets.FACEBOOK_PAGE_ID_GIANCANI || secrets.FACEBOOK_PAGE_ID || '234931856561526' }}
+          FACEBOOK_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN_GIANCANI || secrets.FACEBOOK_TOKEN }}
+          FACEBOOK_PAGE_ACCESS_TOKEN: ${{ secrets.FACEBOOK_PAGE_ACCESS_TOKEN_GIANCANI || secrets.FACEBOOK_TOKEN }}
           PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          MINDSET_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python bot_mindset_antonio_giancani.py --auto-publish
+          CMD="python bot_pillole_immobiliari_video.py"
+          if [ "${{ github.event.inputs.pubblica_fb }}" != "false" ]; then
+            CMD="$CMD --pubblica-fb"
+          fi
+          if [ -n "${{ github.event.inputs.story_id }}" ]; then
+            CMD="$CMD --id ${{ github.event.inputs.story_id }}"
+          fi
+          echo "Esecuzione comando: $CMD"
+          $CMD
+
+      - name: 💾 Salva lo Stato di Rotazione
+        if: always()
+        run: |
+          git config --global user.name "Giancani Bot Cloud"
+          git config --global user.email "bot@immobiliaregiancani.it"
+          git add stato_rotazione_pillole_video.json 2>/dev/null || true
+          git diff --staged --quiet || (git commit -m "Aggiornato stato rotazione pillole [skip ci]" && git push)
