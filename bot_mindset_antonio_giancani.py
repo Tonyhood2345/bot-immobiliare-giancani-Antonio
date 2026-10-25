@@ -47,8 +47,20 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN") or os.environ.get("TEL
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID") or os.environ.get("MINDSET_CHAT_ID") or "1723292483"
 
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY") or ""
-FACEBOOK_PAGE_ID = os.environ.get("FACEBOOK_PAGE_ID") or "234931856561526"
-FACEBOOK_TOKEN = os.environ.get("FACEBOOK_TOKEN") or os.environ.get("FACEBOOK_PAGE_ACCESS_TOKEN") or ""
+# Direttiva Mandatoria Utente: Pubblicazione ESCLUSIVAMENTE su pagina/profilo Antonio Giancani (ID: 108297671444008)
+# VIETATO qualsiasi instradamento o pubblicazione sulla pagina aziendale Immobiliare Giancani (ID: 234931856561526)
+PAGE_ID_ANTONIO_DEFAULT = "108297671444008"
+_fb_env_id = os.environ.get("FB_PAGE_ID_ANTONIO")
+if _fb_env_id and _fb_env_id != "234931856561526":
+    FACEBOOK_PAGE_ID = _fb_env_id
+else:
+    FACEBOOK_PAGE_ID = PAGE_ID_ANTONIO_DEFAULT
+
+FACEBOOK_TOKEN = (
+    os.environ.get("FB_PAGE_ACCESS_TOKEN_ANTONIO")
+    or os.environ.get("FB_ANTONIO_TOKEN")
+    or "EAAZAH7q8wRZAEBSVeVa4DxzWiZBSoeSZC47h88ZBmzeNlvL3ow74fIzITgMKMrURWeDZBE5fU8ZCk0Hgm0J8CtqviQPqbrj7DQhnVv57W7WZCh80KCsNq6SL1imUOuBbEZBQqS9LB2iteZCID62Iw4ZCu27w2FA6MrFpsH9DCcxSd58qV1IwzpeIb5FDMg7qmNFiOER2XVo"
+)
 
 CSV_FILE = os.path.join(BASE_DIR, "Mindset.csv")
 LOGO_PATH = os.path.join(BASE_DIR, "faccia.png")
@@ -651,8 +663,12 @@ def invia_notifica_telegram(messaggio_md):
 
 # --- 12. PUBBLICAZIONE FACEBOOK GRAPH API ---
 def pubblica_su_facebook(video_path, caption):
-    """Pubblica automaticamente il video sulla Pagina Facebook."""
-    print(f"🚀 [FACEBOOK] Pubblicazione automatica del video sulla Pagina ID: {FACEBOOK_PAGE_ID}...")
+    """Pubblica automaticamente il video sulla Pagina Facebook ESCLUSIVA di Antonio Giancani."""
+    if str(FACEBOOK_PAGE_ID) == "234931856561526":
+        print("🚫 [PROTEZIONE BRAND] Questo bot tratta Mindset ed è riservato ESCLUSIVAMENTE ad Antonio Giancani. Pubblicazione su Immobiliare Giancani BLOCCATA.")
+        return False
+
+    print(f"🚀 [FACEBOOK] Pubblicazione automatica del video sulla Pagina di Antonio Giancani (ID: {FACEBOOK_PAGE_ID})...")
     if not FACEBOOK_PAGE_ID or not FACEBOOK_TOKEN:
         print("❌ Impossibile pubblicare su Facebook: token o Page ID mancante.")
         return False
