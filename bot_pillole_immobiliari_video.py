@@ -435,12 +435,103 @@ def cerca_e_scarica_clip_pexels(queries, temp_dir=TEMP_DIR):
     return None
 
 
+CATEGORIA_DYNAMIC_QUERIES = {
+    "diritto": {
+        "queries_pixabay": ["signing document pen", "contract notary", "lawyer contract desk", "legal consultation"],
+        "queries_pexels": ["signing contract pen", "notary deed signing", "legal deed paperwork"],
+        "icona": "⚖️",
+        "tema_visivo": "Diritto Immobiliare e Tutela Notarile"
+    },
+    "urbanistica": {
+        "queries_pixabay": ["architect blueprint", "architectural floorplan", "blueprint", "drafting table"],
+        "queries_pexels": ["architect blueprint plan", "architect drawing blueprint", "floor plan house"],
+        "icona": "📐",
+        "tema_visivo": "Urbanistica, Catasto e Planimetrie"
+    },
+    "fiscale": {
+        "queries_pixabay": ["calculator money finance", "tax calculation desk", "financial advisor loan", "finance paperwork"],
+        "queries_pexels": ["tax calculation finance", "finance consultation desk", "mortgage calculation"],
+        "icona": "💰",
+        "tema_visivo": "Fisco, Tasse e Agevolazioni"
+    },
+    "contratti": {
+        "queries_pixabay": ["signing contract handshake", "business agreement handshake", "real estate contract deal"],
+        "queries_pexels": ["business handshake deal", "real estate contract handshake", "handshake agreement"],
+        "icona": "🤝",
+        "tema_visivo": "Contrattualistica e Accordi Blindati"
+    },
+    "successioni": {
+        "queries_pixabay": ["historic luxury mansion", "prestigious estate house", "family heritage property", "notary papers"],
+        "queries_pexels": ["historic luxury estate", "real estate classic property", "heritage mansion"],
+        "icona": "🏛️",
+        "tema_visivo": "Successioni Ereditarie e Continuità Storica"
+    },
+    "condominio": {
+        "queries_pixabay": ["modern apartment building drone", "condominium exterior", "residential complex drone"],
+        "queries_pexels": ["modern apartment building drone", "residential architecture complex", "condominium exterior"],
+        "icona": "🏢",
+        "tema_visivo": "Condominio e Parti Comuni"
+    },
+    "mutui": {
+        "queries_pixabay": ["bank advisor meeting", "signing bank documents", "mortgage loan desk"],
+        "queries_pexels": ["bank advisor mortgage meeting", "signing bank loan papers", "financial advisor loan"],
+        "icona": "🏦",
+        "tema_visivo": "Finanziamenti, Banche e Mutui"
+    },
+    "locazioni": {
+        "queries_pixabay": ["handing keys real estate", "signing rental lease agreement", "meeting keys handshake"],
+        "queries_pexels": ["handing over keys house", "real estate rental contract", "signing lease deal"],
+        "icona": "🔑",
+        "tema_visivo": "Locazioni e Contratti di Affitto"
+    },
+    "garanzie": {
+        "queries_pixabay": ["house inspection survey", "architect inspecting building", "engineer building structure"],
+        "queries_pexels": ["property inspection engineer", "architect inspecting house", "building survey inspection"],
+        "icona": "🔍",
+        "tema_visivo": "Verifica Tecnica, Perizie e Garanzie"
+    },
+    "energia": {
+        "queries_pixabay": ["modern luxury house", "contemporary home", "solar energy modern house", "villa exterior"],
+        "queries_pexels": ["modern eco architecture home", "luxury modern villa exterior", "energy efficient architecture"],
+        "icona": "⚡",
+        "tema_visivo": "Efficienza Energetica e Classe A"
+    },
+    "agrario": {
+        "queries_pixabay": ["countryside estate villa", "vineyard luxury estate", "italian countryside villa", "olive grove"],
+        "queries_pexels": ["countryside villa landscape", "italian estate vineyard", "prestigious country property"],
+        "icona": "🌾",
+        "tema_visivo": "Diritto Agrario e Proprietà Rurali"
+    }
+}
+
+
 def ottieni_clip_video_contestuale(item, temp_dir=TEMP_DIR):
     """
     Ottiene la clip video perfetta per la pillola:
+    Supporta dinamicamente fino a 365+ pillole collegando categoria e argomento.
     tenta Pixabay prima, poi Pexels come fallback.
     """
-    info = MAPPATURA_CONTESTUALE.get(str(item["id"]), MAPPATURA_CONTESTUALE["1"])
+    item_id = str(item.get("id", "1"))
+    if item_id in MAPPATURA_CONTESTUALE:
+        info = MAPPATURA_CONTESTUALE[item_id]
+    else:
+        # Risoluzione dinamica basata su Categoria o Argomento per espansione 365+
+        cat_lower = str(item.get("categoria", "")).lower()
+        arg_lower = str(item.get("argomento", "")).lower()
+        matched_info = None
+        for k, v in CATEGORIA_DYNAMIC_QUERIES.items():
+            if k in cat_lower or k in arg_lower:
+                matched_info = v
+                break
+        if not matched_info:
+            matched_info = {
+                "queries_pixabay": ["modern luxury villa", "contemporary home interior", "signing contract desk"],
+                "queries_pexels": ["modern luxury house exterior", "real estate contract closing", "architectural luxury home"],
+                "icona": "🏡",
+                "tema_visivo": f"{item.get('categoria', 'Immobiliare')} • {item.get('argomento', 'Consulenza')}"
+            }
+        info = matched_info
+
     queries_pix = info["queries_pixabay"]
     queries_pex = info["queries_pexels"]
 
