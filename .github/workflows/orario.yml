@@ -1,7 +1,7 @@
 name: 🏢 Bot Video Pillole Immobiliari & Legali (Immobiliare Giancani)
 
 on:
-  schedule:
+# [KILL SWITCH META DISATTIVATO]   schedule:
     # 08:30, 12:30, 16:30 ora italiana
     - cron: '30 6 * * *'
     - cron: '30 10 * * *'

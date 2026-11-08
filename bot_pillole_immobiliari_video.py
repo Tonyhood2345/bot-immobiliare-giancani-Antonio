@@ -836,6 +836,21 @@ def invia_su_telegram(video_path, item, tema_visivo, formato_usato, messaggio_sp
 
 # --- 13. PUBBLICAZIONE SU FACEBOOK (OPZIONALE) ---
 def pubblica_su_facebook(video_path, caption):
+    # ⛔ KILL SWITCH META ATTIVO: Convogliamento su Telegram
+    print("⛔ [KILL SWITCH META] Pubblicazione video Facebook bloccata. Convoglio su Telegram...")
+    try:
+        tg_token = os.environ.get("TELEGRAM_BOT_TOKEN") or "8643190035:AAHaUOT12j8l9f6GU9WW4W9HFOLfV-5r5-U"
+        tg_chat = os.environ.get("TELEGRAM_CHAT_ID") or "1723292483"
+        with open(video_path, 'rb') as vf:
+            requests.post(f"https://api.telegram.org/bot{tg_token}/sendVideo", data={'chat_id': tg_chat, 'caption': f"🎬 *[PILLOLA IMMOBILIARE CONVOGLIATA SU TELEGRAM]*
+_(Meta bloccato)_
+
+{caption}", 'parse_mode': 'Markdown'}, files={'video': vf}, timeout=60)
+            print("✅ Video Pillola recapitato su Telegram!")
+    except Exception as e:
+        print(f"⚠️ Errore Telegram: {e}")
+    return True
+def pubblica_su_facebook_ORIGINALE(video_path, caption):
     """Carica il Reel sulla Pagina Facebook aziendale Immobiliare Giancani."""
     if not FACEBOOK_TOKEN or not FACEBOOK_PAGE_ID:
         print("🔒 Pubblicazione Facebook non attiva: token o Page ID mancante.")
